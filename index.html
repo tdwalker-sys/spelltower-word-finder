@@ -701,12 +701,16 @@ function decode(file) {
 // Pixel classes: 0 background/other, 1 white tile, 2 dark tile, 3 yellow tile, 4 blue tile, 5 grey (the finger-drag highlight over a tile)
 function classify(r, g, b, bg) {
   const mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+  // The dominant colour is the backdrop unless the board is so full that white tiles dominate; a backdrop pixel is never a tile.
+  if (bg[0] < 200 || bg[1] < 200 || bg[2] < 200) { if (Math.abs(r - bg[0]) < 24 && Math.abs(g - bg[1]) < 24 && Math.abs(b - bg[2]) < 24) return 0; }
   if (mn >= 200 && mx - mn < 45) return 1;
   if (mx < 75) return 2;
   // A column close to the top is washed with red: white turns pink, black tiles and letter ink turn maroon, blue turns lavender.
   if (r >= 215 && g >= 160 && Math.abs(g - b) <= 14 && r - g >= 12) return 1;
   if (r < 175 && g < 100 && b < 110 && r - g > 20) return 2;
-  if (r > 185 && g > 165 && b < 150 && r - b > 60) return 3;
+  // Yellow bonus tile (about 248,224,112). Tower mode's gold backdrop (about 232,192,88) is darker in green and must not match,
+  // or the board edge lands on the backdrop and every column shifts.
+  if (r >= 230 && g >= 205 && b < 150 && r - b >= 60 && g - b >= 80) return 3;
   // Blue row-clear tile: blue is the strongest channel by a clear margin and red the weakest. Teal backgrounds have green on top, so they
   // never match. Screenshots carry a Display P3 profile that the canvas converts to sRGB, which pushes the tile's red down to ~115, so no red floor here.
   if (b >= 180 && b > g + 10 && g > r && b - r >= 60) return 4;
@@ -955,16 +959,22 @@ async function readScreenshot(file) {
           }
           await worker.setParameters({tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"});
         }
-        const gc = glyphCanvas(cv, t.x0 + m, t.y0 + m, t.x1 - m, t.y1 - m, hasNum);
+        // Blank the corner only when a number was actually found there; a wide H or F reaches into the corner and would lose its right side.
+        const mask = !!dg || n > 0;
+        const gc = glyphCanvas(cv, t.x0 + m, t.y0 + m, t.x1 - m, t.y1 - m, mask);
         let res = await worker.recognize(gc);
         let l = (res.data.text || "").toUpperCase().replace(/[^A-Z]/g, "")[0] || "";
-        if (!l) { // the thin strokes sometimes read as nothing; a second pass with heavier strokes usually gets them
-          res = await worker.recognize(thicken(gc));
-          l = (res.data.text || "").toUpperCase().replace(/[^A-Z]/g, "")[0] || "";
+        let conf = res.data.confidence || 0;
+        // Thin strokes sometimes read as nothing, or as a near miss with low confidence (H as L, F as E when the crossbar drops out).
+        // A second pass with heavier strokes usually gets them; keep whichever read the reader trusts more.
+        if (!l || conf < 75) {
+          const r2 = await worker.recognize(thicken(gc));
+          const l2 = (r2.data.text || "").toUpperCase().replace(/[^A-Z]/g, "")[0] || "";
+          const c2 = r2.data.confidence || 0;
+          if (l2 && (!l || c2 > conf)) { res = r2; l = l2; conf = c2; }
         }
-        const conf = res.data.confidence || 0;
         // shape cues for the game's thin geometric font
-        const shape = glyphShape(a.cls, a.W, t.x0 + a.cell * 0.12, t.y0 + a.cell * 0.12, hasNum ? t.x0 + a.cell * 0.66 : t.x1 - a.cell * 0.12, t.y1 - a.cell * 0.12);
+        const shape = glyphShape(a.cls, a.W, t.x0 + a.cell * 0.12, t.y0 + a.cell * 0.12, mask ? t.x0 + a.cell * 0.66 : t.x1 - a.cell * 0.12, t.y1 - a.cell * 0.12);
         if (shape) {
           if (shape.aspect < 0.3) l = "I";                                   // a lone vertical stroke
           else if ((l === "P" || l === "D") && shape.bottomSpan > 0.75) l = "D";
