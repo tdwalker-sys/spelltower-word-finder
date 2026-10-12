@@ -1,0 +1,1005 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>SpellTower Word Finder</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Word Finder">
+<meta name="theme-color" content="#eef1f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14191d" media="(prefers-color-scheme: dark)">
+<style>
+@font-face { font-family: "Jost"; font-style: normal; font-weight: 300 500; font-display: swap; src: url(fonts/jost-latin.woff2) format("woff2"); }
+@font-face { font-family: "Source Sans 3"; font-style: normal; font-weight: 400 600; font-display: swap; src: url(fonts/source-sans-3-latin.woff2) format("woff2"); }
+/* Layout: one column that mirrors the game screen — the board sits on a steel-blue ground, results hang below it like a tile rack. */
+:root {
+  --ground: #4f8fb5;        /* SpellTower's blue backdrop */
+  --ground-deep: #3b769b;
+  --tile: #f3efe6;          /* cream tile */
+  --tile-ink: #1d1c22;
+  --tile-blocked: #16121c;
+  --tile-rowclear: #b9dcee;
+  --tile-hot: #f2d83a;      /* yellow highlight */
+  --bg: #eef1f3;
+  --fg: #1d1c22;
+  --muted: #5b6672;
+  --panel: #ffffff;
+  --line: #d3d9de;
+  --accent: #2f6f95;
+  --accent-ink: #ffffff;
+  --warn: #b0561a;
+  --font-tile: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #2d5a78; --ground-deep: #23485f; --tile: #ece7dc; --tile-ink: #1d1c22;
+    --tile-blocked: #0b0910; --tile-rowclear: #9cc8e0; --tile-hot: #e9cf2f;
+    --bg: #14191d; --fg: #e8ebee; --muted: #9aa6b1; --panel: #1d242a; --line: #2f3941;
+    --accent: #7fb6d6; --accent-ink: #0f1a22; --warn: #e6934d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #2d5a78; --ground-deep: #23485f; --tile: #ece7dc; --tile-ink: #1d1c22;
+  --tile-blocked: #0b0910; --tile-rowclear: #9cc8e0; --tile-hot: #e9cf2f;
+  --bg: #14191d; --fg: #e8ebee; --muted: #9aa6b1; --panel: #1d242a; --line: #2f3941;
+  --accent: #7fb6d6; --accent-ink: #0f1a22; --warn: #e6934d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.4; }
+.wrap { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-block: 12px 40px; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--font-tile); font-weight: 400; font-size: 1.5rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
+.sub { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, label.btn { font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 6px; padding: 8px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+button.primary, label.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.hot { background: var(--tile-hot); color: var(--tile-ink); border-color: var(--tile-hot); }
+button:disabled, label.btn.off { opacity: 0.5; cursor: default; }
+button:focus-visible, label.btn:focus-within, input:focus-visible, select:focus-visible, textarea:focus-visible, .cell:focus-visible, .word:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.btn input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.status { font-size: 0.9rem; color: var(--muted); min-height: 1.3em; }
+.status.warn { color: var(--warn); }
+
+.board { background: var(--ground); border-radius: 8px; padding: 10px; }
+.grid { display: grid; gap: 2px; width: 100%; max-width: 100%; }
+.cell { position: relative; aspect-ratio: 1; background: transparent; border: 0; padding: 0; margin: 0; border-radius: 2px; font-family: var(--font-tile); font-weight: 300; font-size: clamp(0.9rem, 4.2vw, 1.6rem); color: var(--tile-ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.cell.tile { background: var(--tile); }
+.cell.blocked { background: var(--tile-blocked); }
+.cell.rowclear { background: var(--tile-rowclear); }
+.cell.bonus { background: #f8e27a; }
+.cell.bonus .y { position: absolute; bottom: 1px; right: 3px; font-size: 0.5em; font-weight: 500; }
+.cell.unsure { color: var(--warn); font-weight: 500; }
+/* Search mode's starred tile: a large faint star behind the letter, like the game draws it */
+.cell.star { isolation: isolate; }
+.cell.star::before { content: "★"; position: absolute; inset: 0; z-index: -1; display: flex; align-items: center; justify-content: center; font-size: 2em; color: rgba(0,0,0,0.16); pointer-events: none; }
+.cell .n { position: absolute; top: 1px; right: 3px; font-size: 0.55em; font-weight: 500; }
+.cell.sel { box-shadow: inset 0 0 0 3px var(--tile-hot); }
+.cell.path { background: var(--tile-hot); }
+.cell.path .o { position: absolute; bottom: 1px; left: 3px; font-size: 0.5em; font-weight: 500; }
+.cell.clear { box-shadow: inset 0 0 0 2px var(--warn); }
+.cell.empty:hover { background: var(--ground-deep); }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 0.95rem; }
+.panel input[type="text"] { font: inherit; font-family: var(--font-tile); text-transform: uppercase; text-align: center; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+.panel input.one { width: 3.2em; }
+.panel input.row { flex: 1 1 10em; min-width: 0; letter-spacing: 0.3em; }
+.panel select { font: inherit; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+.panel label { display: inline-flex; align-items: center; gap: 6px; }
+.panel .grow { flex: 1 1 100%; color: var(--muted); font-size: 0.85rem; }
+
+details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+summary { cursor: pointer; font-weight: 600; }
+textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monospace; font-size: 1rem; letter-spacing: 0.25em; text-transform: uppercase; margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+.hint { color: var(--muted); font-size: 0.85rem; margin: 6px 0 0; }
+.hint code { font-family: ui-monospace, Menlo, monospace; }
+
+.results h2 { font-family: var(--font-tile); font-weight: 400; font-size: 1rem; letter-spacing: 0.1em; text-transform: uppercase; margin: 14px 0 6px; color: var(--muted); display: flex; justify-content: space-between; }
+.words { display: flex; flex-wrap: wrap; gap: 6px; }
+.word { font: inherit; font-family: var(--font-tile); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; background: var(--tile); color: var(--tile-ink); border: 0; border-radius: 3px; padding: 6px 9px; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }
+.word.on { background: var(--tile-hot); }
+.word.plain { cursor: default; }
+.word .sc { font-family: var(--font-body); font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.word .rc { font-size: 0.7rem; font-weight: 500; color: var(--accent); }
+.legend { color: var(--muted); font-size: 0.85rem; }
+.opts { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 0.9rem; }
+.opts label { display: inline-flex; align-items: center; gap: 6px; }
+.opts input[type="number"] { width: 4em; font: inherit; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); }
+.opts select { font: inherit; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); }
+@media (prefers-reduced-motion: no-preference) { .cell { transition: background 120ms; } }
+</style>
+</head><body>
+
+<div class="wrap">
+  <header>
+    <h1>SpellTower Word Finder</h1>
+    <p class="sub">Longest words first. Tap a word to see its path, then play it.</p>
+  </header>
+
+  <div class="toolbar">
+    <label class="btn primary" id="shotLabel">🖼 Read a screenshot<input type="file" id="shot" accept="image/*"></label>
+    <button id="solve">Find words</button>
+    <button id="lettersBtn">Letters only</button>
+    <button id="addRowBtn">Add row</button>
+    <button id="typedBtn">Typed word</button>
+    <button id="undo" hidden>Undo</button>
+    <button id="clearBoard">Clear board</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <div class="panel" id="letters" hidden>
+    <label style="flex:1 1 100%">Letters <input type="text" id="lettersText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="e.g. TCCINUAE"></label>
+    <label>Starts with <input type="text" id="lettersStart" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
+    <label>Ends with <input type="text" id="lettersEnd" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
+    <button id="lettersFind" class="primary">Find words from these letters</button>
+    <button id="lettersClose">Close</button>
+    <span class="grow">Type the letters you can reach, in any order; the board is ignored. Each letter is used at most as often as you typed it. <code>?</code> is a wild tile. "Starts with" and "ends with" are optional and can be more than one letter (e.g. ends with <code>ING</code>).</span>
+  </div>
+
+  <div class="board"><div class="grid" id="grid"></div></div>
+
+  <details id="readerCheck" hidden>
+    <summary>What the reader saw</summary>
+    <canvas id="readerCanvas" style="display:block;max-width:100%;margin-top:8px;border-radius:6px"></canvas>
+    <p class="hint" id="readerHint"></p>
+  </details>
+
+  <div class="panel" id="typed" hidden>
+    <label style="flex:1 1 100%">Word the game accepted <input type="text" id="typedText" class="row" maxlength="20" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="e.g. JAIN"></label>
+    <button id="typedFind" class="primary">Trace it on the board</button>
+    <button id="typedNext" hidden>Other path</button>
+    <button id="typedClose">Close</button>
+    <span class="grow">For a word the finder did not list. It is traced on the board and outlined; tap "Play this word" to remove it. The word is remembered on this device and will be found next time.</span>
+  </div>
+
+  <div class="panel" id="play" hidden>
+    <span>Play <strong id="playWord"></strong>?</span>
+    <button id="playBtn" class="hot">Play this word</button>
+    <span class="grow">Removes the outlined tiles and drops the columns. With "New row after each word" ticked you then type the row the game added. Use the "Add row" button for any extra row, or when the finder has fallen behind the game.</span>
+  </div>
+
+  <div class="panel" id="newRow" hidden>
+    <label style="flex:1 1 100%">New bottom row <input type="text" id="newRowText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" placeholder="e.g. TCCINUAE"></label>
+    <button id="newRowBtn" class="primary">Add row and find words</button>
+    <button id="newRowSkip">No new row</button>
+    <span class="grow">Type the letters left to right. <code>#</code> for a black tile, a digit after a letter for a minimum-length tile, <code>*</code> after a letter for a blue tile, <code>!</code> after a letter for a yellow bonus tile, <code>@</code> after a letter for Search mode's star tile.</span>
+  </div>
+
+  <div class="panel" id="editor" hidden>
+    <span id="editorPos"></span>
+    <label>Letter <input type="text" id="edLetter" class="one" maxlength="1" inputmode="latin" autocapitalize="characters"></label>
+    <label>Min length <select id="edN"><option value="0">none</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select></label>
+    <label><input type="checkbox" id="edRc"> blue row-clear</label>
+    <label><input type="checkbox" id="edY"> yellow bonus</label>
+    <label><input type="checkbox" id="edB"> black tile</label>
+    <label><input type="checkbox" id="edS"> ★ star (Search: every word must use it)</label>
+    <button id="edEmpty">Empty</button>
+    <button id="edDone">Done</button>
+  </div>
+
+  <div class="opts">
+    <label><input type="checkbox" id="puzzle" checked> New row after each word (Puzzle, Ex Puzzle, Zen; untick for Tower and Search)</label>
+    <label>Columns <input type="number" id="cols" min="5" max="12" value="8"></label>
+    <label>Rows <input type="number" id="rows" min="3" max="16" value="13"></label>
+    <label>Min length <input type="number" id="minLen" min="3" max="8" value="3"></label>
+    <label>Sort <select id="sort"><option value="length">longest first</option><option value="score">highest score</option><option value="cleared">most tiles removed</option></select></label>
+  </div>
+
+  <details>
+    <summary>Type the board instead</summary>
+    <textarea id="text" spellcheck="false"></textarea>
+    <p class="hint">One row per line, top row first. <code>.</code> empty, <code>#</code> black tile, digit after a letter for a minimum-length tile (<code>E6</code>), <code>*</code> after a letter for a blue row-clear tile (<code>Z*</code>), <code>!</code> after a letter for a yellow bonus tile (<code>R!</code>), <code>@</code> after a letter for Search mode's star tile (<code>P@</code>).</p>
+    <button id="applyText">Apply</button>
+  </details>
+
+  <div class="results" id="results"></div>
+  <p class="legend">Scores are estimates: letter values of every tile the word removes, times word length, times 2 with one yellow bonus tile in the word (<strong>★</strong>), 3 with two, and so on. Words of 5+ letters also remove the tiles directly above, below, left and right of each letter (not the diagonals). J, Q, X, Z and blue tiles clear their whole row, black tiles included. Orange outline marks the tiles that would be removed. In Search mode, mark the starred tile (the reader does this, or tick "★ star" on the tile) and only words that pass through it are listed; tiles there do not disappear, so do not tap Play. An orange <strong>?</strong> is a tile the screenshot reader could not read; tap it to fix.</p>
+</div>
+
+<script src="ocr/tesseract.min.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const VALUES = {A:1,B:4,C:4,D:3,E:1,F:5,G:3,H:5,I:1,J:9,K:6,L:2,M:4,N:2,O:1,P:4,Q:12,R:2,S:1,T:2,U:2,V:5,W:5,X:9,Y:5,Z:11};
+const ROWCLEAR_LETTERS = new Set(["J","Q","X","Z"]);
+const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];   // a word may step in all eight directions
+const ORTHO = [[-1,0],[1,0],[0,-1],[0,1]];                                // but a 5+ letter word only clears the four tiles that share an edge (confirmed in the app 2026-10-10)
+
+// ---------- state ----------
+let cols = 8, rows = 13;
+let grid = [];            // grid[r][c] = null | {l, n, rc, b}
+let selected = null;      // {r, c}
+let shownPath = null;     // {word, cells:[[r,c]...], cleared:Set("r,c")}
+let undoStack = [];
+let lastList = null;      // the solver's last result, so a sort change re-renders without re-solving
+let typedPaths = [], typedIdx = 0, typedWord = "";   // tracings of a typed word on the current board
+let trie = null;
+let dictStatus = "loading";
+let ocrWorker = null, ocrBusy = false;
+
+function blank() { grid = Array.from({length: rows}, () => Array(cols).fill(null)); }
+blank();
+
+// ---------- persistence (per-viewer convenience) ----------
+function save() { try { localStorage.setItem("st-board", JSON.stringify({cols, rows, grid, puzzle: $("puzzle").checked, sort: $("sort").value})); } catch (e) {} }
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem("st-board") || "null");
+    if (s && Array.isArray(s.grid) && s.grid.length >= 3 && s.grid.length <= 16) {
+      cols = s.cols; rows = s.rows; grid = s.grid;
+      if (typeof s.puzzle === "boolean") $("puzzle").checked = s.puzzle;
+      if (s.sort && [...$("sort").options].some(o => o.value === s.sort)) $("sort").value = s.sort;
+    }
+  } catch (e) {}
+}
+
+// ---------- sample board (from the user's own screenshot, hand-typed) ----------
+const SAMPLE = ["BRSRSOOO","TLHRPLLI","IDEORAJE","VD#RIHDI","TCCINUAE"];
+
+function parseRow(line) {
+  const row = [];
+  const s = line.toUpperCase().replace(/\s+/g, "");
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === ".") { row.push(null); continue; }
+    if (ch === "#") { row.push({l: "", n: 0, rc: false, b: true}); continue; }
+    if (/[A-Z?]/.test(ch)) {
+      const cell = {l: ch, n: 0, rc: false, b: false, y: false, s: false};
+      while (i + 1 < s.length && /[0-9*!@]/.test(s[i + 1])) {
+        i++;
+        if (s[i] === "*") cell.rc = true; else if (s[i] === "!") cell.y = true; else if (s[i] === "@") cell.s = true; else cell.n = +s[i];
+      }
+      row.push(cell);
+    }
+  }
+  return row;
+}
+function parseText(txt) {
+  const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
+  const out = lines.map(parseRow);
+  return {rows: out, width: Math.max(0, ...out.map(r => r.length))};
+}
+function applyParsed(p, forceCols) {
+  const w = forceCols || p.width || cols;
+  cols = Math.min(12, Math.max(5, w));
+  rows = Math.min(16, Math.max(3, p.rows.length));
+  grid = p.rows.slice(-rows).map(r => { const rr = r.slice(0, cols); while (rr.length < cols) rr.push(null); return rr; });
+  while (grid.length < rows) grid.unshift(Array(cols).fill(null)); // a board typed with fewer than 3 rows gets empty rows on top
+  $("cols").value = cols; $("rows").value = rows;
+}
+
+// ---------- rendering ----------
+function render() {
+  const g = $("grid");
+  g.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  g.textContent = "";
+  const pathIdx = new Map();
+  if (shownPath) shownPath.cells.forEach(([r, c], i) => pathIdx.set(r + "," + c, i + 1));
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const cell = grid[r][c];
+    const b = document.createElement("button");
+    b.className = "cell";
+    b.setAttribute("aria-label", `row ${r + 1} column ${c + 1}` + (!cell ? ", empty" : cell.b ? ", black tile" : `, ${cell.l === "?" ? "unread" : cell.l}${cell.n ? `, needs ${cell.n} letters` : ""}${cell.rc || ROWCLEAR_LETTERS.has(cell.l) ? ", clears row" : ""}${cell.y ? ", bonus" : ""}${cell.s ? ", star tile, every word must use it" : ""}`));
+    if (!cell) b.classList.add("empty");
+    else if (cell.b) b.classList.add("blocked");
+    else {
+      b.classList.add("tile");
+      if (cell.rc || ROWCLEAR_LETTERS.has(cell.l)) b.classList.add("rowclear");
+      if (cell.y) b.classList.add("bonus");
+      if (cell.s) b.classList.add("star");
+      if (cell.l === "?") b.classList.add("unsure");
+      b.textContent = cell.l;
+      if (cell.y) { const y = document.createElement("span"); y.className = "y"; y.textContent = "★"; b.appendChild(y); }
+    }
+    if (cell && cell.n) { const n = document.createElement("span"); n.className = "n"; n.textContent = cell.n; b.appendChild(n); }
+    if (selected && selected.r === r && selected.c === c) b.classList.add("sel");
+    const k = r + "," + c;
+    if (pathIdx.has(k)) { b.classList.add("path"); const o = document.createElement("span"); o.className = "o"; o.textContent = pathIdx.get(k); b.appendChild(o); }
+    else if (shownPath && shownPath.cleared.has(k)) b.classList.add("clear");
+    b.addEventListener("click", () => select(r, c));
+    g.appendChild(b);
+  }
+  $("text").value = toText();
+  $("play").hidden = !shownPath;
+  if (shownPath) $("playWord").textContent = shownPath.word;
+  $("undo").hidden = !undoStack.length;
+}
+function toText() {
+  return grid.map(row => row.map(c => !c ? "." : c.b ? "#" : c.l + (c.n ? c.n : "") + (c.rc ? "*" : "") + (c.y ? "!" : "") + (c.s ? "@" : "")).join("")).join("\n");
+}
+function setStatus(msg, warn) { $("status").textContent = msg; $("status").classList.toggle("warn", !!warn); }
+function clearPath() { shownPath = null; document.querySelectorAll(".word.on").forEach(x => x.classList.remove("on")); }
+// The board changed: every stored path (word results, typed-word tracings) may now point at tiles that moved or changed, so drop them all.
+function invalidate() {
+  clearPath();
+  lastList = null; $("results").textContent = "";
+  typedPaths = []; typedIdx = 0; typedWord = ""; $("typedNext").hidden = true;
+}
+function hasTiles() { return grid.some(row => row.some(c => c)); }
+// Search mode: the starred tiles (normally one). When any exist, only words that pass through one count.
+function starKeys() { const s = new Set(); grid.forEach((row, r) => row.forEach((c, k) => { if (c && c.s && !c.b) s.add(r + "," + k); })); return s; }
+function usesStar(p, stars) { return !stars.size || p.some(([r, c]) => stars.has(r + "," + c)); }
+
+// ---------- cell editor ----------
+function select(r, c) {
+  selected = {r, c}; clearPath();
+  const cell = grid[r][c];
+  $("editor").hidden = false;
+  $("editorPos").textContent = `Row ${r + 1}, col ${c + 1}`;
+  $("edLetter").value = cell && cell.l !== "?" ? cell.l : "";
+  $("edN").value = cell ? String(cell.n || 0) : "0";
+  $("edRc").checked = !!(cell && cell.rc);
+  $("edY").checked = !!(cell && cell.y);
+  $("edB").checked = !!(cell && cell.b);
+  $("edS").checked = !!(cell && cell.s);
+  render();
+  $("edLetter").focus();
+}
+function commitEditor() {
+  if (!selected) return;
+  const l = ($("edLetter").value || "").toUpperCase().replace(/[^A-Z]/g, "");
+  const b = $("edB").checked;
+  if (!l && !b) grid[selected.r][selected.c] = null;
+  else grid[selected.r][selected.c] = {l: b ? "" : l, n: +$("edN").value || 0, rc: $("edRc").checked, b, y: !b && $("edY").checked, s: !b && $("edS").checked};
+  invalidate(); save(); render();
+  setStatus("Board changed. Tap Done (or Find words) to refresh the list.");
+}
+["edN", "edRc", "edY", "edB", "edS"].forEach(id => $(id).addEventListener("change", commitEditor));
+$("edLetter").addEventListener("input", () => {
+  commitEditor();
+  if ($("edLetter").value && selected && selected.c + 1 < cols) select(selected.r, selected.c + 1);
+});
+$("edEmpty").addEventListener("click", () => { $("edLetter").value = ""; $("edB").checked = false; commitEditor(); });
+function closeEditor() { selected = null; $("editor").hidden = true; render(); if (!lastList && hasTiles()) solve(); }
+$("edDone").addEventListener("click", closeEditor);
+$("editor").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); closeEditor(); } });
+$("clearBoard").addEventListener("click", () => { pushUndo(); blank(); selected = null; invalidate(); save(); render(); setStatus("Board cleared."); });
+$("applyText").addEventListener("click", () => { pushUndo(); applyParsed(parseText($("text").value)); selected = null; invalidate(); save(); render(); solve(); });
+$("puzzle").addEventListener("change", save);
+$("sort").addEventListener("change", () => { save(); if (lastList) { clearPath(); render(); showResults(lastList); } });
+function resize() {
+  const nc = Math.min(12, Math.max(5, +$("cols").value || cols));
+  const nr = Math.min(16, Math.max(3, +$("rows").value || rows));
+  const ng = Array.from({length: nr}, (_, r) => Array.from({length: nc}, (_, c) => {
+    const or = r - (nr - rows);
+    return (or >= 0 && or < rows && c < cols) ? grid[or][c] : null;
+  }));
+  cols = nc; rows = nr; grid = ng; selected = null; $("editor").hidden = true; invalidate(); save(); render();
+  if (hasTiles()) solve();
+}
+$("cols").addEventListener("change", resize);
+$("rows").addEventListener("change", resize);
+
+// ---------- undo ----------
+function pushUndo() { undoStack.push(JSON.stringify({cols, rows, grid})); if (undoStack.length > 20) undoStack.shift(); }
+$("undo").addEventListener("click", () => {
+  const s = undoStack.pop(); if (!s) return;
+  const o = JSON.parse(s); cols = o.cols; rows = o.rows; grid = o.grid;
+  $("cols").value = cols; $("rows").value = rows;
+  selected = null; $("editor").hidden = true; invalidate(); $("newRow").hidden = true; save(); render(); solve();
+});
+
+// ---------- dictionary ----------
+async function loadDict() {
+  try {
+    const txt = await (await fetch("enable1.txt")).text();
+    const root = {};
+    let n = 0;
+    for (const w of txt.split("\n")) {
+      const s = w.trim().toUpperCase();
+      if (s.length < 3 || !/^[A-Z]+$/.test(s)) continue;
+      let node = root;
+      for (const ch of s) node = node[ch] || (node[ch] = {});
+      node.$ = 1; n++;
+    }
+    trie = root; dictStatus = "ready";
+    const extra = loadCustomWords();
+    for (const w of extra) insertWord(w);
+    setStatus(`Dictionary loaded (${n.toLocaleString()} words${extra.length ? `, plus ${extra.length} of your own` : ""}).`);
+  } catch (e) {
+    dictStatus = "failed";
+    setStatus("The word list did not load. Reload the page to try again.", true);
+  }
+}
+
+// ---------- your own words (accepted by the game, missing from the list) ----------
+function insertWord(w) { let node = trie; for (const ch of w) node = node[ch] || (node[ch] = {}); node.$ = 1; }
+function loadCustomWords() { try { const a = JSON.parse(localStorage.getItem("st-words") || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function rememberWord(w) {
+  if (!trie || isWord(w)) return false;
+  insertWord(w);
+  try { const a = loadCustomWords(); if (!a.includes(w)) { a.push(w); localStorage.setItem("st-words", JSON.stringify(a)); } } catch (e) {}
+  return true;
+}
+
+// ---------- solver ----------
+function solve() {
+  if (!trie) { setStatus(dictStatus === "failed" ? "No dictionary loaded." : "Dictionary still loading; try again in a moment.", true); return; }
+  const minLen = Math.max(3, +$("minLen").value || 3);
+  const best = new Map();
+  const stars = starKeys();
+  const dirs = DIRS;
+  const used = Array.from({length: rows}, () => Array(cols).fill(false));
+  const path = [];
+  function dfs(r, c, node, word, need) {
+    const cell = grid[r][c];
+    if (!cell || cell.b || !cell.l || cell.l === "?") return;
+    const next = node[cell.l];
+    if (!next) return;
+    used[r][c] = true; path.push([r, c]);
+    const w = word + cell.l;
+    const nd = Math.max(need, cell.n || 0);
+    if (next.$ && w.length >= minLen && w.length >= nd) record(w, path.slice());
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nc < 0 || nr >= rows || nc >= cols || used[nr][nc]) continue;
+      dfs(nr, nc, next, w, nd);
+    }
+    used[r][c] = false; path.pop();
+  }
+  // For each word keep two tracings: the one that scores most and the one that removes most tiles (often the same one).
+  // A tracing that misses the star tile is dropped here, before the best one is chosen, so a word is listed only with a tracing the game accepts.
+  function record(w, p) {
+    if (!usesStar(p, stars)) return;
+    const t = {path: p, ...scorePath(p)};
+    const e = best.get(w) || (best.set(w, {word: w, byScore: t, byCleared: t}), best.get(w));
+    if (t.score > e.byScore.score) e.byScore = t;
+    if (t.cleared.size > e.byCleared.cleared.size || (t.cleared.size === e.byCleared.cleared.size && t.score > e.byCleared.score)) e.byCleared = t;
+  }
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) dfs(r, c, trie, "", 0);
+  lastList = [...best.values()];
+  showResults(lastList);
+}
+function scorePath(p) {
+  const cleared = new Set();
+  const len = p.length;
+  const add = (r, c) => { if (r >= 0 && c >= 0 && r < rows && c < cols && grid[r][c]) cleared.add(r + "," + c); };
+  for (const [r, c] of p) {
+    add(r, c);
+    if (len >= 5) for (const [dr, dc] of ORTHO) add(r + dr, c + dc);
+    const cell = grid[r][c];
+    if (cell.rc || ROWCLEAR_LETTERS.has(cell.l)) for (let cc = 0; cc < cols; cc++) add(r, cc);
+  }
+  let sum = 0;
+  for (const k of cleared) { const [r, c] = k.split(",").map(Number); const cell = grid[r][c]; sum += cell.b ? 0 : (VALUES[cell.l] || 0); }
+  const bonus = p.filter(([r, c]) => grid[r][c].y).length; // yellow tiles in the word: ×2 for one, ×3 for two, ...
+  return {score: sum * len * (1 + bonus), cleared};
+}
+function showResults(entries) {
+  const box = $("results");
+  box.textContent = "";
+  const unsure = grid.flat().filter(c => c && c.l === "?").length;
+  const starred = starKeys().size > 0;
+  if (!entries.length) { box.textContent = starred ? "No words pass through the ★ tile. Check the letters around it, or lower the minimum length." : "No words found. Check the letters, or lower the minimum length."; return; }
+  const mode = $("sort").value; // "length" | "score" | "cleared"
+  // pick the tracing that suits the sort, then order
+  const list = entries.map(e => { const t = mode === "cleared" ? e.byCleared : e.byScore; return {word: e.word, score: t.score, path: t.path, cleared: t.cleared}; });
+  const alpha = (a, b) => a.word.localeCompare(b.word);
+  if (mode === "score") list.sort((a, b) => b.score - a.score || b.word.length - a.word.length || alpha(a, b));
+  else if (mode === "cleared") list.sort((a, b) => b.cleared.size - a.cleared.size || b.score - a.score || alpha(a, b));
+  else list.sort((a, b) => b.word.length - a.word.length || b.score - a.score || alpha(a, b));
+  // longest-first is grouped by length; the other two are one ranked list
+  const groups = new Map();
+  for (const it of list) { const k = mode === "length" ? `${it.word.length} letters` : (mode === "score" ? "By score" : "By tiles removed"); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
+  for (const [label, items] of groups) {
+    const h = document.createElement("h2");
+    h.innerHTML = `<span>${label}</span><span>${items.length}</span>`;
+    box.appendChild(h);
+    const wrap = document.createElement("div"); wrap.className = "words";
+    for (const it of items) {
+      const b = document.createElement("button"); b.className = "word";
+      b.innerHTML = `<span>${it.word}</span><span class="sc">${it.score}</span>` + (mode === "cleared" ? `<span class="sc">${it.cleared.size} tiles</span>` : "") + (it.path.some(([r, c]) => grid[r][c].rc || ROWCLEAR_LETTERS.has(grid[r][c].l)) ? `<span class="rc">row</span>` : "") + (it.path.some(([r, c]) => grid[r][c].y) ? `<span class="rc">★</span>` : "");
+      b.addEventListener("click", () => {
+        const on = shownPath && shownPath.word === it.word;
+        clearPath();
+        if (!on) { shownPath = {word: it.word, cells: it.path, cleared: it.cleared}; b.classList.add("on"); }
+        selected = null; $("editor").hidden = true;
+        render();
+        if (!on) $("grid").scrollIntoView({behavior: "smooth", block: "nearest"});
+      });
+      wrap.appendChild(b);
+    }
+    box.appendChild(wrap);
+  }
+  setStatus(`${list.length} words found${starred ? ", all through the ★ tile" : ""}.` + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} marked ? were skipped; tap them to fix.` : ""), !!unsure);
+}
+$("solve").addEventListener("click", () => { clearPath(); selected = null; $("editor").hidden = true; render(); solve(); });
+
+// ---------- play a word the finder did not list ----------
+// Every way the word can be traced on the current board, best-scoring first.
+// A numbered tile only joins a word at least that long, the same rule the solver applies.
+function tracePaths(word) {
+  const paths = [];
+  const used = Array.from({length: rows}, () => Array(cols).fill(false));
+  const path = [];
+  function dfs(r, c, i) {
+    const cell = grid[r][c];
+    if (!cell || cell.b || cell.l !== word[i] || (cell.n || 0) > word.length) return;
+    used[r][c] = true; path.push([r, c]);
+    if (i === word.length - 1) paths.push(path.slice());
+    else for (const [dr, dc] of DIRS) { const nr = r + dr, nc = c + dc; if (nr < 0 || nc < 0 || nr >= rows || nc >= cols || used[nr][nc]) continue; dfs(nr, nc, i + 1); }
+    used[r][c] = false; path.pop();
+  }
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) dfs(r, c, 0);
+  const stars = starKeys();
+  const scored = paths.filter(p => usesStar(p, stars)).map(p => ({path: p, ...scorePath(p)}));
+  scored.sort((a, b) => b.score - a.score);
+  // drop paths that remove exactly the same tiles as an earlier one
+  const seen = new Set();
+  return scored.filter(s => { const k = [...s.cleared].sort().join("|"); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+function showTypedPath(prefix) {
+  const p = typedPaths[typedIdx];
+  clearPath(); selected = null; $("editor").hidden = true;
+  shownPath = {word: typedWord, cells: p.path, cleared: p.cleared};
+  render();
+  $("typedNext").hidden = typedPaths.length < 2;
+  setStatus((prefix || "") + `${typedWord} traced${typedPaths.length > 1 ? ` (${typedIdx + 1} of ${typedPaths.length} ways that remove different tiles)` : ""}. Check the outline, then tap "Play this word".`);
+}
+function findTyped() {
+  const w = ($("typedText").value || "").toUpperCase().replace(/[^A-Z]/g, "");
+  $("typedText").value = w;
+  if (w.length < 3) { setStatus("Type the whole word first.", true); return; }
+  const paths = tracePaths(w);
+  if (!paths.length) { clearPath(); render(); setStatus(`${w} cannot be traced on this board. Check the board's letters, that the tiles are still there, and that no numbered tile needs a longer word.`, true); return; }
+  typedPaths = paths; typedIdx = 0; typedWord = w;
+  showTypedPath(rememberWord(w) ? `${w} added to your own words. ` : "");
+}
+$("typedBtn").addEventListener("click", () => { $("typed").hidden = false; $("typedText").value = ""; $("typedNext").hidden = true; $("typedText").focus(); });
+$("typedClose").addEventListener("click", () => { $("typed").hidden = true; });
+$("typedFind").addEventListener("click", findTyped);
+$("typedNext").addEventListener("click", () => { if (typedPaths.length) { typedIdx = (typedIdx + 1) % typedPaths.length; showTypedPath(); } });
+$("typedText").addEventListener("keydown", e => { if (e.key === "Enter") findTyped(); });
+
+// ---------- letters only (no board) ----------
+// Every dictionary word that can be spelled from a bag of letters, each used at most as often as it was typed.
+function wordsFromLetters(str, minLen) {
+  const counts = {};
+  let wild = 0;
+  for (const ch of str.toUpperCase()) { if (ch === "?") wild++; else if (/[A-Z]/.test(ch)) counts[ch] = (counts[ch] || 0) + 1; }
+  const out = [];
+  function dfs(node, word) {
+    if (node.$ && word.length >= minLen) out.push(word);
+    for (const ch in node) {
+      if (ch === "$") continue;
+      if (counts[ch] > 0) { counts[ch]--; dfs(node[ch], word + ch); counts[ch]++; }
+      else if (wild > 0) { wild--; dfs(node[ch], word + ch); wild++; }
+    }
+  }
+  dfs(trie, "");
+  const score = w => [...w].reduce((s, ch) => s + (VALUES[ch] || 0), 0) * w.length;
+  return out.map(w => ({word: w, score: score(w)})).sort((a, b) => b.word.length - a.word.length || b.score - a.score || a.word.localeCompare(b.word));
+}
+function isWord(w) {
+  let node = trie;
+  for (const ch of w) { node = node && node[ch]; if (!node) return false; }
+  return !!node.$;
+}
+function showLetterResults(list, letters, label) {
+  const box = $("results");
+  box.textContent = "";
+  label = label || letters;
+  const whole = letters.replace(/[^A-Z]/g, "");
+  const verdict = whole.length >= 3 && !letters.includes("?") ? (isWord(whole) ? `${whole} is a word. ` : `${whole} itself is not a word. `) : "";
+  if (!list.length) { box.textContent = "No words from those letters. Add a letter or lower the minimum length."; setStatus(verdict + "0 words.", true); return; }
+  const byLen = new Map();
+  for (const it of list) { if (!byLen.has(it.word.length)) byLen.set(it.word.length, []); byLen.get(it.word.length).push(it); }
+  for (const [len, items] of byLen) {
+    const h = document.createElement("h2");
+    h.innerHTML = `<span>${len} letters</span><span>${items.length}</span>`;
+    box.appendChild(h);
+    const wrap = document.createElement("div"); wrap.className = "words";
+    for (const it of items) {
+      const s = document.createElement("span"); s.className = "word plain";
+      s.innerHTML = `<span>${it.word}</span><span class="sc">${it.score}</span>`;
+      wrap.appendChild(s);
+    }
+    box.appendChild(wrap);
+  }
+  setStatus(verdict + `${list.length} words from ${label}. Scores are letter values times length, with no board bonuses.`);
+}
+function findFromLetters() {
+  if (!trie) { setStatus(dictStatus === "failed" ? "No dictionary loaded." : "Dictionary still loading; try again in a moment.", true); return; }
+  const letters = ($("lettersText").value || "").toUpperCase().replace(/[^A-Z?]/g, "");
+  $("lettersText").value = letters;
+  const minLen = Math.max(3, +$("minLen").value || 3);
+  if (letters.length < minLen) { setStatus(`Type at least ${minLen} letters (a ? wild counts as one).`, true); return; }
+  const start = ($("lettersStart").value || "").toUpperCase().replace(/[^A-Z]/g, "");
+  const end = ($("lettersEnd").value || "").toUpperCase().replace(/[^A-Z]/g, "");
+  $("lettersStart").value = start; $("lettersEnd").value = end;
+  clearPath(); selected = null; $("editor").hidden = true; render();
+  let list = wordsFromLetters(letters, minLen);
+  if (start) list = list.filter(it => it.word.startsWith(start));
+  if (end) list = list.filter(it => it.word.endsWith(end));
+  const label = letters + (start ? `, starting ${start}` : "") + (end ? `, ending ${end}` : "");
+  showLetterResults(list, letters, label);
+}
+$("lettersBtn").addEventListener("click", () => { $("letters").hidden = false; $("lettersText").focus(); });
+$("lettersClose").addEventListener("click", () => { $("letters").hidden = true; });
+$("lettersFind").addEventListener("click", findFromLetters);
+["lettersText", "lettersStart", "lettersEnd"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") findFromLetters(); }));
+
+// ---------- play a word ----------
+$("playBtn").addEventListener("click", () => {
+  if (!shownPath) return;
+  pushUndo();
+  for (const k of shownPath.cleared) { const [r, c] = k.split(",").map(Number); grid[r][c] = null; }
+  // gravity: tiles fall to the bottom of their column
+  for (let c = 0; c < cols; c++) {
+    const stack = [];
+    for (let r = rows - 1; r >= 0; r--) if (grid[r][c]) stack.push(grid[r][c]);
+    for (let r = rows - 1; r >= 0; r--) grid[r][c] = stack[rows - 1 - r] || null;
+  }
+  const word = shownPath.word;
+  invalidate(); selected = null; $("editor").hidden = true;
+  save(); render();
+  if ($("puzzle").checked) {
+    openNewRow("No new row");
+    setStatus(`Played ${word}. Now type the new bottom row from the game.`);
+  } else { setStatus(`Played ${word}.`); solve(); }
+});
+function openNewRow(skipLabel) {
+  $("newRow").hidden = false; $("newRowText").value = ""; $("newRowSkip").textContent = skipLabel; $("newRowText").focus();
+}
+$("addRowBtn").addEventListener("click", () => { openNewRow("Cancel"); setStatus("Type the row the game just added, left to right."); });
+const MAX_ROWS = 16;
+// A full-height board with tiles in its top row cannot take another row: refusing keeps the finder in step with the game rather than silently losing tiles.
+function canAddRow() { return grid[0].every(c => !c) || rows < MAX_ROWS; }
+function addRow(row) {
+  while (row.length < cols) row.push(null);
+  row = row.slice(0, cols);
+  if (grid[0].every(c => !c)) grid.shift(); else rows++;
+  grid.push(row);
+  $("rows").value = rows;
+}
+$("newRowBtn").addEventListener("click", () => {
+  const row = parseRow($("newRowText").value);
+  if (!row.length) { setStatus("Type the new row first.", true); return; }
+  if (!canAddRow()) { setStatus(`The board is already ${MAX_ROWS} rows tall with tiles in the top row, so no row was added. Clear some tiles first, or check the board against the game.`, true); return; }
+  const warn = row.length !== cols ? `That row has ${row.length} tiles but the board is ${cols} wide; it was cut or padded to fit. Check it, or change Columns first.` : "";
+  pushUndo(); addRow(row);
+  $("newRow").hidden = true; selected = null; $("editor").hidden = true; invalidate(); save(); render(); solve();
+  if (warn) setStatus(warn + " " + $("status").textContent, true);
+});
+$("newRowText").addEventListener("keydown", e => { if (e.key === "Enter") $("newRowBtn").click(); });
+$("newRowSkip").addEventListener("click", () => { $("newRow").hidden = true; solve(); });
+
+// ---------- screenshot reading (in-page OCR) ----------
+const OCR_BASE = new URL("ocr/", location.href).href;
+async function getOcr(progress) {
+  if (ocrWorker) return ocrWorker;
+  if (typeof Tesseract === "undefined") throw new Error("The text reader did not load. Reload the page.");
+  progress("fetching the letter model");
+  const model = new Uint8Array(await (await fetch(OCR_BASE + "eng-traineddata.wasm")).arrayBuffer());
+  const w = await Tesseract.createWorker([{code: "eng", data: model}], 1, {
+    workerPath: OCR_BASE + "worker.min.js",
+    corePath: OCR_BASE,
+    workerBlobURL: false,
+    gzip: false,
+    logger: m => { if (m.status && m.status !== "recognizing text") progress(m.status.replace("tesseract", "reader") + (m.progress ? ` ${Math.round(m.progress * 100)}%` : "")); },
+  });
+  await w.setParameters({tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ", tessedit_pageseg_mode: Tesseract.PSM.SINGLE_CHAR});
+  ocrWorker = w;
+  return w;
+}
+function decode(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const max = 2400, s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * s); cv.height = Math.round(img.naturalHeight * s);
+      cv.getContext("2d", {willReadFrequently: true}).drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url); resolve(cv);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("That image could not be opened. Use a PNG or JPEG screenshot.")); };
+    img.src = url;
+  });
+}
+// Pixel classes: 0 background/other, 1 white tile, 2 dark tile, 3 yellow tile, 4 blue tile, 5 grey (the finger-drag highlight over a tile)
+function classify(r, g, b, bg) {
+  const mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+  if (mn >= 200 && mx - mn < 45) return 1;
+  if (mx < 75) return 2;
+  // A column close to the top is washed with red: white turns pink, black tiles and letter ink turn maroon, blue turns lavender.
+  if (r >= 215 && g >= 160 && Math.abs(g - b) <= 14 && r - g >= 12) return 1;
+  if (r < 175 && g < 100 && b < 110 && r - g > 20) return 2;
+  if (r > 185 && g > 165 && b < 150 && r - b > 60) return 3;
+  // Blue row-clear tile: blue is the strongest channel by a clear margin and red the weakest. Teal backgrounds have green on top, so they
+  // never match. Screenshots carry a Display P3 profile that the canvas converts to sRGB, which pushes the tile's red down to ~115, so no red floor here.
+  if (b >= 180 && b > g + 10 && g > r && b - r >= 60) return 4;
+  const lum = 0.3 * r + 0.59 * g + 0.11 * b, bl = 0.3 * bg[0] + 0.59 * bg[1] + 0.11 * bg[2];
+  if (b > 190 && b > r + 40 && lum > bl + 20) return 4;
+  if (r >= 130 && r < 200 && g >= 160 && b > 175 && b - g >= 12) return 4;
+  if (mx - mn < 12 && mn >= 130) return 5;
+  return 0;
+}
+// Column count from the letters themselves. A letter never touches the edge of its cell, so the right
+// count is the largest one whose grid lines stay clear of letter ink. Black tiles are solid, not ink.
+function colsByInk(cls, W, left, right, bottom) {
+  const bw = right - left + 1;
+  // top of the board: walk up from the bottom until a tall band has no tile surface
+  let top = bottom, gap = 0;
+  for (let y = bottom; y >= 0 && gap < bw / 5; y--) {
+    let run = 0, hit = false;
+    for (let x = left; x <= right && !hit; x++) { const v = cls[y * W + x]; run = (v === 1 || v === 3 || v === 4) ? run + 1 : 0; if (run > bw * 0.04) hit = true; }
+    if (hit) { top = y; gap = 0; } else gap++;
+  }
+  const h = bottom - top + 1;
+  if (h < bw / 12) return 0;
+  const at = (x, y) => cls[(top + y) * W + left + x] === 2;
+  const hrun = new Uint16Array(bw * h), vrun = new Uint16Array(bw * h);
+  for (let y = 0; y < h; y++) { let s = -1; for (let x = 0; x <= bw; x++) { if (x < bw && at(x, y)) { if (s < 0) s = x; } else if (s >= 0) { for (let i = s; i < x; i++) hrun[y * bw + i] = x - s; s = -1; } } }
+  for (let x = 0; x < bw; x++) { let s = -1; for (let y = 0; y <= h; y++) { if (y < h && at(x, y)) { if (s < 0) s = y; } else if (s >= 0) { for (let i = s; i < y; i++) vrun[i * bw + x] = y - s; s = -1; } } }
+  const solid = bw * 0.06, inkX = new Float64Array(bw), inkY = new Float64Array(h);
+  let total = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < bw; x++) { const i = y * bw + x; if (hrun[i] && Math.min(hrun[i], vrun[i]) < solid) { inkX[x]++; inkY[y]++; total++; } }
+  if (total < 50) return 0;
+  // share of the ink that falls on the grid lines, relative to what an even spread would put there
+  let pick = 0, bestRatio = Infinity, bestN = 0;
+  for (let n = 5; n <= 12; n++) {
+    const c = bw / n, half = Math.max(1, c * 0.05);
+    let on = 0, area = 0;
+    for (let k = 1; k < n; k++) for (let x = Math.ceil(k * c - half); x <= k * c + half; x++) if (x >= 0 && x < bw) { on += inkX[x]; area += h; }
+    for (let k = 1; k * c < h - half; k++) for (let y = Math.ceil(h - k * c - half); y <= h - k * c + half; y++) if (y >= 0 && y < h) { on += inkY[y]; area += bw; }
+    const ratio = (on / total) / (area / (bw * h));
+    if (ratio < 0.12) pick = n;
+    if (ratio < bestRatio) { bestRatio = ratio; bestN = n; }
+  }
+  return pick || (bestRatio < 0.3 ? bestN : 0);
+}
+function analyse(cv) {
+  const W = cv.width, H = cv.height;
+  const ctx = cv.getContext("2d", {willReadFrequently: true});
+  const d = ctx.getImageData(0, 0, W, H).data;
+  const px = (x, y) => { const i = (y * W + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+  // background: the most common coarse color
+  const hist = new Map();
+  for (let y = 0; y < H; y += 4) for (let x = 0; x < W; x += 4) { const [r, g, b] = px(x, y); const k = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4); hist.set(k, (hist.get(k) || 0) + 1); }
+  let bk = 0, bn = -1; for (const [k, n] of hist) if (n > bn) { bn = n; bk = k; }
+  const bg = [((bk >> 8) & 15) * 16 + 8, ((bk >> 4) & 15) * 16 + 8, (bk & 15) * 16 + 8];
+  const cls = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; cls[y * W + x] = classify(d[i], d[i + 1], d[i + 2], bg); }
+  const tileish = v => v === 1 || v === 2 || v === 3 || v === 4;
+  // bottom of the board: lowest scanline with a wide run of white
+  let bottom = -1;
+  for (let y = H - 1; y >= 0 && bottom < 0; y--) {
+    let run = 0, best = 0;
+    for (let x = 0; x < W; x++) { run = cls[y * W + x] === 1 ? run + 1 : 0; best = Math.max(best, run); }
+    if (best > W * 0.08) bottom = y;
+  }
+  if (bottom < 0) throw new Error("No board found in that image. Make sure the white tiles are visible.");
+  // left/right of the board from the band just above the bottom
+  let left = W, right = 0;
+  for (let y = bottom - 3; y > bottom - 40 && y >= 0; y--) {
+    let x0 = -1, x1 = -1;
+    for (let x = 0; x < W; x++) if (tileish(cls[y * W + x])) { if (x0 < 0) x0 = x; x1 = x; }
+    if (x0 >= 0) { left = Math.min(left, x0); right = Math.max(right, x1); }
+  }
+  const bw = right - left + 1;
+  // column count: count the letters in the bottom row (one dark cluster each) plus black tiles
+  const bandTop = Math.round(bottom - bw * 0.09), bandBot = Math.round(bottom - bw * 0.01);
+  const dark = new Float32Array(bw);
+  for (let x = left; x <= right; x++) { let n = 0; for (let y = bandTop; y < bandBot; y++) if (cls[y * W + x] === 2) n++; dark[x - left] = n / (bandBot - bandTop); }
+  const segs = []; // {kind: "glyph"|"black", x0, x1}
+  let cur = null;
+  for (let i = 0; i < bw; i++) {
+    const k = dark[i] > 0.9 ? "black" : dark[i] > 0 ? "glyph" : null;
+    if (cur && cur.kind === k) { cur.x1 = i; continue; }
+    if (cur && k === null && cur.kind === "glyph" && cur.gap === undefined) { cur.gap = i; }
+    if (k === null) continue;
+    if (cur && cur.kind === "glyph" && k === "glyph" && i - cur.x1 < bw * 0.012) { cur.x1 = i; continue; } // bridge tiny gaps inside a letter
+    cur = {kind: k, x0: i, x1: i}; segs.push(cur);
+  }
+  const glyphs = segs.filter(s => s.kind === "glyph" && s.x1 - s.x0 >= 2).length;
+  const blacks = segs.filter(s => s.kind === "black");
+  let nc = glyphs + blacks.length;
+  if (nc >= 5) { const c0 = bw / nc; nc = glyphs + blacks.reduce((s, b) => s + Math.max(1, Math.round((b.x1 - b.x0 + 1) / c0)), 0); }
+  if (nc < 5 || nc > 12) nc = +$("cols").value || 8;
+  nc = colsByInk(cls, W, left, right, bottom) || nc; // the bottom-row count above is the fallback
+  const cell = bw / nc;
+  // rows: walk up from the bottom until a row has no tile at all
+  const out = [];
+  for (let k = 0; k < 16; k++) {
+    const y0 = bottom - (k + 1) * cell, y1 = bottom - k * cell;
+    if (y0 < 0) break;
+    const row = [];
+    let any = false;
+    for (let i = 0; i < nc; i++) {
+      const x0 = left + i * cell, x1 = x0 + cell;
+      const counts = [0, 0, 0, 0, 0, 0];
+      let tot = 0, grey = 0;
+      for (let y = Math.round(y0 + cell * 0.08); y < y1 - cell * 0.08; y += 2) for (let x = Math.round(x0 + cell * 0.08); x < x1 - cell * 0.08; x += 2) {
+        counts[cls[y * W + x]]++; tot++;
+        // Search mode's star is flat light grey (about 216) on the white tile (about 248); nothing else on a tile is that colour
+        const i = (y * W + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
+        if (r >= 195 && r <= 235 && Math.abs(r - g) < 8 && Math.abs(r - b) < 8) grey++;
+      }
+      const white = (counts[1] + counts[5]) / tot, dark = counts[2] / tot, yellow = counts[3] / tot, blue = counts[4] / tot;
+      let kind = 0;
+      if (dark > 0.6) kind = 2; else if (yellow > 0.35) kind = 3; else if (blue > 0.35) kind = 4; else if (white > 0.45) kind = 1;
+      if (kind) any = true;
+      row.push(kind ? {kind, x0, y0, x1, y1, star: kind === 1 && grey / tot > 0.12} : null);
+    }
+    if (!any) break;
+    out.unshift(row);
+  }
+  return {rows: out, cols: nc, cell, cls, W, H, ctx, left, right, bottom};
+}
+// The screenshot with the grid the reader settled on drawn over it, so a missed row or a wrong column count is visible at a glance.
+function showReaderCheck(cv, a) {
+  const c = $("readerCanvas"), pad = a.cell * 0.6;
+  const top = a.bottom - a.rows.length * a.cell, rightEdge = a.left + a.cols * a.cell;
+  const x0 = Math.max(0, a.left - pad), x1 = Math.min(cv.width, rightEdge + pad);
+  const y0 = Math.max(0, top - a.cell - pad), y1 = Math.min(cv.height, a.bottom + a.cell + pad);
+  const scale = Math.min(1, 520 / (x1 - x0));
+  c.width = Math.round((x1 - x0) * scale); c.height = Math.round((y1 - y0) * scale);
+  const g = c.getContext("2d");
+  g.drawImage(cv, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+  g.strokeStyle = "#ff7a00"; g.lineWidth = 2;
+  for (let i = 0; i <= a.cols; i++) { const x = (a.left + i * a.cell - x0) * scale; g.beginPath(); g.moveTo(x, (top - y0) * scale); g.lineTo(x, (a.bottom - y0) * scale); g.stroke(); }
+  for (let k = 0; k <= a.rows.length; k++) { const y = (a.bottom - k * a.cell - y0) * scale; g.beginPath(); g.moveTo((a.left - x0) * scale, y); g.lineTo((rightEdge - x0) * scale, y); g.stroke(); }
+  $("readerHint").textContent = `Orange grid: ${a.cols} columns by ${a.rows.length} rows, as read. Every tile should sit inside an orange cell. A row left outside the grid was missed: add it with "Add row", or fix the whole board under "Type the board instead".`;
+  $("readerCheck").hidden = false; $("readerCheck").open = true;
+}
+function glyphCanvas(src, x0, y0, x1, y1, maskCorner) {
+  const w = x1 - x0, h = y1 - y0;
+  const scale = Math.max(1, 96 / h);
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+  const c = cv.getContext("2d", {willReadFrequently: true});
+  c.imageSmoothingEnabled = true;
+  c.drawImage(src, x0, y0, w, h, 0, 0, cv.width, cv.height);
+  const im = c.getImageData(0, 0, cv.width, cv.height), d = im.data;
+  for (let i = 0; i < d.length; i += 4) { const lum = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; const v = lum < 120 ? 0 : 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  c.putImageData(im, 0, 0);
+  if (maskCorner) { c.fillStyle = "#fff"; c.fillRect(cv.width * 0.62, 0, cv.width * 0.38, cv.height * 0.36); }
+  // pad so the glyph is not touching the edges
+  const pad = document.createElement("canvas");
+  pad.width = cv.width + 40; pad.height = cv.height + 40;
+  const pc = pad.getContext("2d"); pc.fillStyle = "#fff"; pc.fillRect(0, 0, pad.width, pad.height); pc.drawImage(cv, 20, 20);
+  return pad;
+}
+// A copy of a glyph canvas with every dark stroke one pixel heavier on each side.
+function thicken(src) {
+  const cv = document.createElement("canvas");
+  cv.width = src.width; cv.height = src.height;
+  const c = cv.getContext("2d");
+  c.fillStyle = "#fff"; c.fillRect(0, 0, cv.width, cv.height);
+  c.globalCompositeOperation = "darken";
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) c.drawImage(src, dx, dy);
+  return cv;
+}
+// Bounding box of the dark glyph pixels inside a region, plus simple shape cues.
+function glyphShape(cls, W, x0, y0, x1, y1) {
+  let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1, n = 0;
+  for (let y = Math.round(y0); y < y1; y++) for (let x = Math.round(x0); x < x1; x++) if (cls[y * W + x] === 2) { n++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  if (n < 5) return null;
+  const w = maxX - minX + 1, h = maxY - minY + 1;
+  const rowSpan = (fy0, fy1) => { // widest dark extent in a horizontal band of the glyph box, as a fraction of glyph width
+    let a = 1e9, b = -1;
+    for (let y = Math.round(minY + h * fy0); y < minY + h * fy1; y++) for (let x = minX; x <= maxX; x++) if (cls[y * W + x] === 2) { if (x < a) a = x; if (x > b) b = x; }
+    return b < 0 ? 0 : (b - a + 1) / w;
+  };
+  return {w, h, minX, minY, aspect: w / h, bottomSpan: rowSpan(0.85, 1), midSpan: rowSpan(0.45, 0.55)};
+}
+function darkFraction(cls, W, x0, y0, x1, y1) {
+  let n = 0, t = 0;
+  for (let y = Math.round(y0); y < y1; y++) for (let x = Math.round(x0); x < x1; x++) { t++; if (cls[y * W + x] === 2) n++; }
+  return t ? n / t : 0;
+}
+// The small number in a tile's top-right corner, on its own: the largest dark blob of the right size in that corner.
+// Blobs that run out of the corner's left or bottom side belong to the letter, so they are skipped.
+function cornerDigit(cls, W, x0, y0, x1, y1, cell) {
+  const X0 = Math.round(x0), Y0 = Math.ceil(y0) + 1, w = Math.floor(x1) - 1 - X0, h = Math.round(y1) - Y0;
+  if (w < 4 || h < 4) return null;
+  const seen = new Uint8Array(w * h);
+  let best = null;
+  for (let sy = 0; sy < h; sy++) for (let sx = 0; sx < w; sx++) {
+    if (seen[sy * w + sx] || cls[(Y0 + sy) * W + X0 + sx] !== 2) continue;
+    const stack = [sx, sy];
+    seen[sy * w + sx] = 1;
+    let minX = sx, maxX = sx, minY = sy, maxY = sy, area = 0;
+    while (stack.length) {
+      const y = stack.pop(), x = stack.pop();
+      area++;
+      if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || seen[ny * w + nx] || cls[(Y0 + ny) * W + X0 + nx] !== 2) continue;
+        seen[ny * w + nx] = 1; stack.push(nx, ny);
+      }
+    }
+    const bw = maxX - minX + 1, bh = maxY - minY + 1;
+    if (minX === 0 || maxY === h - 1) continue;
+    if (bh < cell * 0.15 || bh > cell * 0.34 || bw < cell * 0.07 || bw > cell * 0.26) continue;
+    if (!best || area > best.area) best = {area, minX: X0 + minX, minY: Y0 + minY, w: bw, h: bh};
+  }
+  return best;
+}
+async function readScreenshot(file) {
+  if (ocrBusy) return;
+  ocrBusy = true; $("shotLabel").classList.add("off");
+  try {
+    setStatus("Looking for the board…");
+    const cv = await decode(file);
+    const a = analyse(cv);
+    if (!a.rows.length) throw new Error("Found the board edge but no tiles. Try a screenshot that shows the whole board.");
+    const worker = await getOcr(msg => setStatus("Loading the text reader: " + msg));
+    const total = a.rows.flat().filter(Boolean).length;
+    let done = 0, unsure = 0;
+    const newGrid = [];
+    for (const row of a.rows) {
+      const gr = [];
+      for (const t of row) {
+        if (!t) { gr.push(null); continue; }
+        if (t.kind === 2) { gr.push({l: "", n: 0, rc: false, b: true}); continue; }
+        const m = a.cell * 0.1;
+        // superscript digit in the top-right corner?
+        const cornerDark = darkFraction(a.cls, a.W, t.x0 + a.cell * 0.68, t.y0 + a.cell * 0.06, t.x1 - a.cell * 0.04, t.y0 + a.cell * 0.34);
+        const centreDark = darkFraction(a.cls, a.W, t.x0 + a.cell * 0.3, t.y0 + a.cell * 0.3, t.x1 - a.cell * 0.3, t.y1 - a.cell * 0.3);
+        const dg = cornerDigit(a.cls, a.W, t.x0 + a.cell * 0.6, t.y0, t.x1, t.y0 + a.cell * 0.42, a.cell);
+        const hasNum = !!dg || (cornerDark > 0.04 && cornerDark < 0.6);
+        let n = 0;
+        if (hasNum) {
+          await worker.setParameters({tessedit_char_whitelist: "3456789"});
+          const dc = dg ? glyphCanvas(cv, dg.minX - 1, dg.minY - 1, dg.minX + dg.w + 1, dg.minY + dg.h + 1, false)
+                        : glyphCanvas(cv, t.x0 + a.cell * 0.64, t.y0 + a.cell * 0.02, t.x1, t.y0 + a.cell * 0.38, false);
+          const r = await worker.recognize(dc);
+          n = +((r.data.text || "").replace(/[^3-9]/g, "")[0] || 0);
+          if (n === 3 || n === 5) { // a 5 has a stem down its upper left; a 3 does not
+            const ds = dg || glyphShape(a.cls, a.W, t.x0 + a.cell * 0.66, t.y0 + a.cell * 0.04, t.x1 - a.cell * 0.02, t.y0 + a.cell * 0.36);
+            if (ds) { const stem = darkFraction(a.cls, a.W, ds.minX, ds.minY, ds.minX + ds.w * 0.35, ds.minY + ds.h * 0.45); n = stem > 0.3 ? 5 : 3; }
+          }
+          await worker.setParameters({tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"});
+        }
+        const gc = glyphCanvas(cv, t.x0 + m, t.y0 + m, t.x1 - m, t.y1 - m, hasNum);
+        let res = await worker.recognize(gc);
+        let l = (res.data.text || "").toUpperCase().replace(/[^A-Z]/g, "")[0] || "";
+        if (!l) { // the thin strokes sometimes read as nothing; a second pass with heavier strokes usually gets them
+          res = await worker.recognize(thicken(gc));
+          l = (res.data.text || "").toUpperCase().replace(/[^A-Z]/g, "")[0] || "";
+        }
+        const conf = res.data.confidence || 0;
+        // shape cues for the game's thin geometric font
+        const shape = glyphShape(a.cls, a.W, t.x0 + a.cell * 0.12, t.y0 + a.cell * 0.12, hasNum ? t.x0 + a.cell * 0.66 : t.x1 - a.cell * 0.12, t.y1 - a.cell * 0.12);
+        if (shape) {
+          if (shape.aspect < 0.3) l = "I";                                   // a lone vertical stroke
+          else if ((l === "P" || l === "D") && shape.bottomSpan > 0.75) l = "D";
+          else if ((l === "P" || l === "D") && shape.bottomSpan < 0.45) l = "P";
+          else if (l === "" && shape.aspect > 0.85 && shape.midSpan > 0.9) l = "O";
+        }
+        if (!l || (conf < 40 && centreDark < 0.01)) { l = "?"; unsure++; }
+        gr.push({l, n, rc: t.kind === 4, b: false, y: t.kind === 3, s: !!t.star});
+        done++;
+        setStatus(`Reading tiles… ${done} of ${total}`);
+      }
+      newGrid.push(gr);
+    }
+    pushUndo();
+    applyParsed({rows: newGrid, width: a.cols}, a.cols);
+    selected = null; $("editor").hidden = true; invalidate(); $("newRow").hidden = true; save(); render();
+    showReaderCheck(cv, a);
+    const stars = newGrid.flat().filter(c => c && c.s).length;
+    setStatus(`Board read: ${a.cols} columns, ${a.rows.length} rows.` + (stars ? ` ${stars === 1 ? "Star tile found; only words through it are listed." : `${stars} star tiles found; check them.`}` : "") + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} could not be read; tap the ? tiles to fix.` : " Check the letters, then find words."), !!unsure);
+    solve();
+  } catch (e) {
+    setStatus(e && e.message ? e.message : "Could not read that screenshot.", true);
+  } finally { ocrBusy = false; $("shotLabel").classList.remove("off"); }
+}
+$("shot").addEventListener("change", e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) readScreenshot(f); });
+
+// ---------- boot ----------
+load();
+if (grid.every(row => row.every(c => !c))) applyParsed(parseText(SAMPLE.join("\n")));
+$("cols").value = cols; $("rows").value = rows;
+render();
+loadDict().then(() => { if (grid.some(row => row.some(c => c))) solve(); });
+window.__st = {readScreenshot, wordsFromLetters, getText: () => $("text").value, status: () => $("status").textContent};
+if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+})();
+</script>
+
+</body></html>

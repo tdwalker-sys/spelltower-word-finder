@@ -1,0 +1,62 @@
+# SpellTower Word Finder
+
+Standalone copy of the SpellTower Word Finder, converted from the Claude artifact on 2026-10-01. It runs entirely in the browser and needs no Claude account.
+
+## What changed from the artifact
+
+- The "Read with Claude" photo reader is removed. "Read a screenshot" (the built-in text reader) is unchanged.
+- The two fonts are bundled in `fonts/` instead of loading from Google.
+- `manifest.webmanifest`, `sw.js` and `icons/` make it installable and usable offline.
+- "Letters only" (added 2026-10-09): type a handful of letters, in any order, and get every word that can be spelled from them without entering the board. `?` is a wild tile. Optional "starts with" and "ends with" fields narrow the list (either can be several letters). Scores are letter values times length, with no board bonuses. The status line also says whether the letters you typed are themselves a word.
+
+- "Add row" button (added 2026-10-09): type a row the game added outside the usual after-each-word prompt, or catch the finder up when it has fallen behind the game. (Corrected 2026-10-10: Zen adds a row after every word just like Puzzle, only without minimum-length tiles, so the "new row after each word" box stays ticked for Zen. Untick it for Tower and Search, which never add rows.)
+- "Typed word" (added 2026-10-09): for a word the game accepted but the finder did not list (ENABLE lacks it; JAIN was the first). Type it, it is traced on the board and outlined like any result, "Other path" cycles through tracings that remove different tiles, then "Play this word" removes it as usual. The word is also added to the dictionary and kept in this browser's storage (`st-words`), so it is found from then on.
+- "What the reader saw" (added 2026-10-09): after a screenshot is read, the board area of the screenshot is shown with the detected grid drawn in orange, so a missed row or a wrong column count is visible before you trust the letters.
+
+- Reliability round (2026-10-10), after a code review:
+  - Any change to the board (tile edit, resize, clear, typed board, new row, screenshot, play, undo) now discards every stored result and typed-word tracing, so an old outline can never remove tiles that have since moved. A tile edit clears the list and says so; Done (or Enter/Escape in the editor) re-runs the search.
+  - "Typed word" obeys numbered tiles: a tile marked 6 is not offered in a 4-letter tracing, the same rule the solver applies.
+  - "Sort" option: longest first (grouped by length, as before), highest score, or most tiles removed. The solver keeps two tracings per word, the best-scoring and the most-removing, and the sort picks the matching one; the "most tiles removed" view shows the tile count on each word. The choice is remembered.
+  - "Letters only" needs as many letters as the minimum length, and a `?` wild counts toward it (`A??` is accepted).
+  - "Add row" refuses a row when the board is already 16 tall with tiles in the top row, and says so, instead of growing past what the Rows control allows or silently dropping tiles.
+  - Legend wording fixed: yellow tiles are ×2 for one, ×3 for two (what the code always did), not "doubled for each".
+  - Tile buttons now read their letter and flags to a screen reader.
+  - Screenshot reader: blue row-clear tiles were read as empty on a nearly full board. The screenshots carry Apple's Display P3 profile, and the browser converts them to sRGB when drawing to the canvas, which pushes the tile's red channel to about 115, below the old rule's floor of 130; the other blue rule compared against the "background", which on a full board is the white tiles. The blue rule is now hue-based (blue strongest, red weakest, no background term). Verified on three 2026-10-10 game screenshots (9 columns; 3 blue tiles, 1 blue tile, none).
+
+- Search mode star tile (added 2026-10-11): in Search mode every word must pass through the tile drawn with a grey star behind its letter. The screenshot reader detects that star (flat light grey on the white tile), the tile editor has a "★ star" checkbox, and a typed board marks it with `@` after the letter (`P@`). While any star tile is on the board, the finder lists only words with a tracing through it; a tracing that misses the star is discarded before the best tracing is picked, so a listed word is always shown with a tracing the game will accept. "Typed word" obeys the same rule. Tiles in Search do not disappear, so do not tap Play there; untick "New row after each word" as for Tower. In Search the yellow tiles are worth more points, as elsewhere, so the reader's bonus marking and the ★ tag on words apply. The "★: 7 | ★★: 9 | ★★★: 12" line above the game board is the anchor for word values: each counter is the threshold a word must reach to earn that many stars (reported 2026-10-11; whether the numbers are word lengths or point values is not yet pinned down, so the finder does not show star ratings yet).
+- Dark theme: the app can be set to a dark look (charcoal board, white letters, blue circles for row-clear tiles). The reader does not handle it and reports "No board found". Switch the app to the light theme before taking screenshots for the reader, or type the board.
+
+Everything else in `index.html` is the artifact's code as published, plus the screenshot-reader fixes of 2026-10-01.
+
+## Rules the simulator uses
+
+The target is the SpellTower (formerly SpellTower+) app, not Puzzmo's version. Words run through adjacent tiles including diagonals. A word of 5+ letters also clears the tiles that share an edge with any of its letters: up, down, left, right, **not diagonals**. That was confirmed 2026-10-10 from a real Zen move (MOUNTAINEERS on a 9-column board): all 18 edge-neighbours went, all 7 corner-only neighbours stayed, including a black tile. The earlier eight-direction rule, taken from Wikipedia and Puzzmo write-ups, is wrong for the app. J, Q, X, Z and blue tiles clear their whole row, and the code includes black tiles in that row clear. Scores are letter values of every tile removed, times word length, times (1 + number of yellow bonus tiles in the word), which is the Puzzmo star-tile formula; the app's own version notes give the base formula as letter values plus bonus letter values times word length, so only the yellow multiplier rests on Puzzmo alone. Yellow tiles are detected by the screenshot reader, set with the "yellow bonus" checkbox in the tile editor, or typed as `!` after the letter (`R!`); words that use one show a ★ in the results.
+
+Open questions to settle in the app before touching the clearing code (noted 2026-10-10):
+
+- **Black tiles beside short words.** Early reviews of the original app say a black tile disappears when any word is made next to it; the finder only removes it through a 5+ letter word's edge-adjacency or a row clear. Check: play a 3-letter word beside a black tile and see whether it goes. (A black tile edge-adjacent to a 5+ letter word is also untested; the 10-10 move only had one at a corner, which stayed.)
+- **Letter values.** The app scored MOUNTAINEERS at 744; the finder's table gives 780 (65 points of tiles × 12). The formula shape is right, so a few letter values in `VALUES` are probably off. Needs a few more scored moves to pin down.
+- **Row-clear letters.** The code treats J, Q, X, Z as row-clearing even when the tile is not drawn blue, on typed and screenshot boards alike. Puzzmo's newspaper instructions list J, Q, X, V; a review of the original app and a Puzzmo player's examples (CUZ, QUA, WAX, JIG) support Z. Check in the app whether a Z tile is drawn blue. (First evidence 2026-10-10: the Z in a freshly added Zen row was drawn blue, so Z is row-clearing in the app.)
+- **Black tiles in a row clear.** Unverified either way.
+
+A screenshot of the app's help screen on tile removal would settle most of these at once.
+
+## Running it
+
+The folder has to be served over http(s); opening `index.html` by double-click will not load the word list or the text reader.
+
+On this Mac: double-click `Start Word Finder.command`. It starts a small local server for this folder (only reachable from this Mac) and opens http://127.0.0.1:8765/ in the default browser. The server keeps running until the Mac restarts.
+
+On iPhone and iPad it has to be on a web host with an https address. That is not set up yet (decided 2026-10-01: Mac only for now). Once it is, open the address in Safari, then Share → Add to Home Screen. After the first load it works without a connection.
+
+## Updating
+
+- A change to `index.html` reaches each device the next time the app is opened online.
+- A change to any other file needs the `VERSION` line at the top of `sw.js` bumped (`v1` → `v2`), or devices keep their stored copies.
+- The icon is drawn by `icons/icon-source.html`; the PNGs are 512, 192 and 180 pixel renders of it.
+
+## Bundled pieces
+
+- `enable1.txt`: the ENABLE word list (public domain).
+- `ocr/`: Tesseract.js and its English model (Apache 2.0).
+- `fonts/`: Jost and Source Sans 3 (SIL Open Font License).
