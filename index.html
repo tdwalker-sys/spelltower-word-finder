@@ -99,7 +99,12 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
 .words { display: flex; flex-wrap: wrap; gap: 6px; }
 .word { font: inherit; font-family: var(--font-tile); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; background: var(--tile); color: var(--tile-ink); border: 0; border-radius: 3px; padding: 6px 9px; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }
 .word.on { background: var(--tile-hot); }
-.word.plain { cursor: default; }
+.def strong { font-family: var(--font-tile); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; font-size: 1.1rem; }
+.def a { color: var(--accent); }
+.def .grow { color: var(--fg); font-size: 0.95rem; }
+.def ol { margin: 4px 0 0; padding-left: 1.4em; }
+.def li { margin: 2px 0; }
+.def em { color: var(--muted); }
 .word .sc { font-family: var(--font-body); font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .word .rc { font-size: 0.7rem; font-weight: 500; color: var(--accent); }
 .legend { color: var(--muted); font-size: 0.85rem; }
@@ -132,9 +137,10 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
     <label style="flex:1 1 100%">Letters <input type="text" id="lettersText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="e.g. TCCINUAE"></label>
     <label>Starts with <input type="text" id="lettersStart" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
     <label>Ends with <input type="text" id="lettersEnd" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
+    <label>Contains <input type="text" id="lettersContains" class="one" maxlength="6" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
     <button id="lettersFind" class="primary">Find words from these letters</button>
     <button id="lettersClose">Close</button>
-    <span class="grow">Type the letters you can reach, in any order; the board is ignored. Each letter is used at most as often as you typed it. <code>?</code> is a wild tile. "Starts with" and "ends with" are optional and can be more than one letter (e.g. ends with <code>ING</code>).</span>
+    <span class="grow">Type the letters you can reach, in any order; the board is ignored. Each letter is used at most as often as you typed it. <code>?</code> is a wild tile. "Starts with", "ends with" and "contains" are optional and can be more than one letter (e.g. ends with <code>ING</code>, contains <code>TION</code>); "contains" means those letters in a row, anywhere in the word. Tap a word for its definition.</span>
   </div>
 
   <div class="board"><div class="grid" id="grid"></div></div>
@@ -156,7 +162,15 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
   <div class="panel" id="play" hidden>
     <span>Play <strong id="playWord"></strong>?</span>
     <button id="playBtn" class="hot">Play this word</button>
+    <button id="defineBtn">Define</button>
     <span class="grow">Removes the outlined tiles and drops the columns. With "New row after each word" ticked you then type the row the game added. Use the "Add row" button for any extra row, or when the finder has fallen behind the game.</span>
+  </div>
+
+  <div class="panel def" id="define" hidden>
+    <strong id="defWord"></strong>
+    <a id="defDict" href="#" hidden>Open in Dictionary app</a>
+    <button id="defClose">Close</button>
+    <div id="defBody" class="grow"></div>
   </div>
 
   <div class="panel" id="newRow" hidden>
@@ -591,8 +605,9 @@ function showLetterResults(list, letters, label) {
     box.appendChild(h);
     const wrap = document.createElement("div"); wrap.className = "words";
     for (const it of items) {
-      const s = document.createElement("span"); s.className = "word plain";
+      const s = document.createElement("button"); s.className = "word";
       s.innerHTML = `<span>${it.word}</span><span class="sc">${it.score}</span>`;
+      s.addEventListener("click", () => define(it.word));
       wrap.appendChild(s);
     }
     box.appendChild(wrap);
@@ -607,18 +622,77 @@ function findFromLetters() {
   if (letters.length < minLen) { setStatus(`Type at least ${minLen} letters (a ? wild counts as one).`, true); return; }
   const start = ($("lettersStart").value || "").toUpperCase().replace(/[^A-Z]/g, "");
   const end = ($("lettersEnd").value || "").toUpperCase().replace(/[^A-Z]/g, "");
-  $("lettersStart").value = start; $("lettersEnd").value = end;
+  const contains = ($("lettersContains").value || "").toUpperCase().replace(/[^A-Z]/g, "");
+  $("lettersStart").value = start; $("lettersEnd").value = end; $("lettersContains").value = contains;
   clearPath(); selected = null; $("editor").hidden = true; render();
   let list = wordsFromLetters(letters, minLen);
   if (start) list = list.filter(it => it.word.startsWith(start));
   if (end) list = list.filter(it => it.word.endsWith(end));
-  const label = letters + (start ? `, starting ${start}` : "") + (end ? `, ending ${end}` : "");
+  if (contains) list = list.filter(it => it.word.includes(contains));
+  const label = letters + (start ? `, starting ${start}` : "") + (end ? `, ending ${end}` : "") + (contains ? `, containing ${contains}` : "");
   showLetterResults(list, letters, label);
 }
 $("lettersBtn").addEventListener("click", () => { $("letters").hidden = false; $("lettersText").focus(); });
 $("lettersClose").addEventListener("click", () => { $("letters").hidden = true; });
 $("lettersFind").addEventListener("click", findFromLetters);
-["lettersText", "lettersStart", "lettersEnd"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") findFromLetters(); }));
+["lettersText", "lettersStart", "lettersEnd", "lettersContains"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") findFromLetters(); }));
+
+// ---------- definitions ----------
+// Looked up online from Wiktionary (no key needed; it covers most of the obscure words in the game's list); the bundled word list
+// carries no meanings. On a Mac the panel also links to the built-in Dictionary app, which works offline.
+const defCache = new Map();
+const stripHtml = html => { const b = new DOMParser().parseFromString(html, "text/html").body; b.querySelectorAll("style, script").forEach(x => x.remove()); return b.textContent.replace(/\s+/g, " ").trim(); };
+const isMac = /Mac/.test(navigator.platform) && navigator.maxTouchPoints === 0;
+// Up to six senses of a word: part of speech + definition text. English entries first, Translingual ones only when there is nothing else.
+async function fetchSenses(word) {
+  let entries = defCache.get(word);
+  if (!entries) {
+    const res = await fetch("https://en.wiktionary.org/api/rest_v1/page/definition/" + encodeURIComponent(word.toLowerCase()));
+    const data = res.ok ? await res.json() : {};
+    entries = Array.isArray(data.en) ? data.en : [];
+    defCache.set(word, entries);
+  }
+  const english = entries.filter(e => e.language === "English");
+  const senses = [];
+  for (const e of english.length ? english : entries) for (const d of (e.definitions || []).slice(0, 2)) { const text = stripHtml(d.definition || ""); if (text) senses.push({pos: (e.partOfSpeech || "").toLowerCase(), text}); }
+  return senses.slice(0, 6);
+}
+// "plural of zoea", "simple past and past participle of unhair", "alternative spelling of zoëa": the base word, so its meaning can be shown as well.
+function baseOf(senses) {
+  for (const s of senses) { const m = /^(?:plural|simple past|past participle|present participle|third-person singular[^;]*|comparative|superlative|alternative (?:spelling|form)|obsolete (?:spelling|form))\b[^;]*? of (\p{L}+)\.?$/iu.exec(s.text); if (m) return m[1].toUpperCase(); }
+  return null;
+}
+async function define(word) {
+  const box = $("define"), body = $("defBody");
+  box.hidden = false;
+  $("defWord").textContent = word;
+  $("defDict").hidden = !isMac;
+  $("defDict").href = "dict://" + word.toLowerCase();
+  body.textContent = "Looking up…";
+  box.scrollIntoView({behavior: "smooth", block: "nearest"});
+  const current = () => $("defWord").textContent === word; // false once another word was tapped while this one loaded
+  try {
+    const senses = await fetchSenses(word);
+    if (!current()) return;
+    body.textContent = "";
+    if (!senses.length) { body.textContent = `${word} is in the game's word list but not in Wiktionary.` + (isMac ? " Try the Dictionary app." : ""); return; }
+    const list = (items) => { const ol = document.createElement("ol"); for (const s of items) { const li = document.createElement("li"); li.innerHTML = `<em>${s.pos}</em> `; li.appendChild(document.createTextNode(s.text)); ol.appendChild(li); } return ol; };
+    body.appendChild(list(senses));
+    // follow "plural of …" to the base word, at most twice (ZOEAE → zoea → zoëa)
+    let base = baseOf(senses), shown = [word];
+    for (let hop = 0; base && !shown.includes(base) && hop < 2; hop++) {
+      const baseSenses = await fetchSenses(base);
+      if (!current()) return;
+      if (!baseSenses.length) break;
+      const h = document.createElement("div"); h.innerHTML = `<strong>${base}</strong>`; body.appendChild(h); body.appendChild(list(baseSenses));
+      shown.push(base); base = baseOf(baseSenses);
+    }
+  } catch (e) {
+    if ($("defWord").textContent === word) body.textContent = "The lookup needs an internet connection." + (isMac ? " The Dictionary app works offline." : "");
+  }
+}
+$("defineBtn").addEventListener("click", () => { if (shownPath) define(shownPath.word); });
+$("defClose").addEventListener("click", () => { $("define").hidden = true; });
 
 // ---------- play a word ----------
 $("playBtn").addEventListener("click", () => {
