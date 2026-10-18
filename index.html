@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Word Finder">
+<meta name="robots" content="noindex">
 <meta name="theme-color" content="#eef1f3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#14191d" media="(prefers-color-scheme: dark)">
 <style>
@@ -79,7 +80,7 @@ label.btn input[type="file"] { position: absolute; width: 1px; height: 1px; opac
 .cell.path { background: var(--tile-hot); }
 .cell.path .o { position: absolute; bottom: 1px; left: 3px; font-size: 0.5em; font-weight: 500; }
 .cell.clear { box-shadow: inset 0 0 0 2px var(--warn); }
-.cell.empty:hover { background: var(--ground-deep); }
+@media (hover: hover) { .cell.empty:hover { background: var(--ground-deep); } }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 0.95rem; }
 .panel input[type="text"] { font: inherit; font-family: var(--font-tile); text-transform: uppercase; text-align: center; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
@@ -124,6 +125,7 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
 
   <div class="toolbar">
     <label class="btn primary" id="shotLabel">🖼 Read a screenshot<input type="file" id="shot" accept="image/*"></label>
+    <span class="legend">or paste / drop one</span>
     <button id="solve">Find words</button>
     <button id="lettersBtn">Letters only</button>
     <button id="addRowBtn">Add row</button>
@@ -134,10 +136,10 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
   <div class="status" id="status"></div>
 
   <div class="panel" id="letters" hidden>
-    <label style="flex:1 1 100%">Letters <input type="text" id="lettersText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="e.g. TCCINUAE"></label>
-    <label>Starts with <input type="text" id="lettersStart" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
-    <label>Ends with <input type="text" id="lettersEnd" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
-    <label>Contains <input type="text" id="lettersContains" class="one" maxlength="6" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
+    <label style="flex:1 1 100%">Letters <input type="text" id="lettersText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off" placeholder="e.g. TCCINUAE"></label>
+    <label>Starts with <input type="text" id="lettersStart" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off"></label>
+    <label>Ends with <input type="text" id="lettersEnd" class="one" maxlength="4" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off"></label>
+    <label>Contains <input type="text" id="lettersContains" class="one" maxlength="6" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off"></label>
     <button id="lettersFind" class="primary">Find words from these letters</button>
     <button id="lettersClose">Close</button>
     <span class="grow">Type the letters you can reach, in any order; the board is ignored. Each letter is used at most as often as you typed it. <code>?</code> is a wild tile. "Starts with", "ends with" and "contains" are optional and can be more than one letter (e.g. ends with <code>ING</code>, contains <code>TION</code>); "contains" means those letters in a row, anywhere in the word. Tap a word for its definition.</span>
@@ -152,7 +154,7 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
   </details>
 
   <div class="panel" id="typed" hidden>
-    <label style="flex:1 1 100%">Word the game accepted <input type="text" id="typedText" class="row" maxlength="20" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="e.g. JAIN"></label>
+    <label style="flex:1 1 100%">Word the game accepted <input type="text" id="typedText" class="row" maxlength="20" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off" placeholder="e.g. JAIN"></label>
     <button id="typedFind" class="primary">Trace it on the board</button>
     <button id="typedNext" hidden>Other path</button>
     <button id="typedClose">Close</button>
@@ -174,7 +176,7 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
   </div>
 
   <div class="panel" id="newRow" hidden>
-    <label style="flex:1 1 100%">New bottom row <input type="text" id="newRowText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" placeholder="e.g. TCCINUAE"></label>
+    <label style="flex:1 1 100%">New bottom row <input type="text" id="newRowText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off" placeholder="e.g. TCCINUAE"></label>
     <button id="newRowBtn" class="primary">Add row and find words</button>
     <button id="newRowSkip">No new row</button>
     <span class="grow">Type the letters left to right. <code>#</code> for a black tile, a digit after a letter for a minimum-length tile, <code>*</code> after a letter for a blue tile, <code>!</code> after a letter for a yellow bonus tile, <code>@</code> after a letter for Search mode's star tile.</span>
@@ -182,7 +184,7 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
 
   <div class="panel" id="editor" hidden>
     <span id="editorPos"></span>
-    <label>Letter <input type="text" id="edLetter" class="one" maxlength="1" inputmode="latin" autocapitalize="characters"></label>
+    <label>Letter <input type="text" id="edLetter" class="one" maxlength="1" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"></label>
     <label>Min length <select id="edN"><option value="0">none</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select></label>
     <label><input type="checkbox" id="edRc"> blue row-clear</label>
     <label><input type="checkbox" id="edY"> yellow bonus</label>
@@ -202,13 +204,14 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
 
   <details>
     <summary>Type the board instead</summary>
-    <textarea id="text" spellcheck="false"></textarea>
+    <textarea id="text" spellcheck="false" autocorrect="off" autocapitalize="characters" autocomplete="off"></textarea>
     <p class="hint">One row per line, top row first. <code>.</code> empty, <code>#</code> black tile, digit after a letter for a minimum-length tile (<code>E6</code>), <code>*</code> after a letter for a blue row-clear tile (<code>Z*</code>), <code>!</code> after a letter for a yellow bonus tile (<code>R!</code>), <code>@</code> after a letter for Search mode's star tile (<code>P@</code>).</p>
     <button id="applyText">Apply</button>
   </details>
 
   <div class="results" id="results"></div>
   <p class="legend">Scores are estimates: letter values of every tile the word removes, times word length, times 2 with one yellow bonus tile in the word (<strong>★</strong>), 3 with two, and so on. Words of 5+ letters also remove the tiles directly above, below, left and right of each letter (not the diagonals). J, Q, X, Z and blue tiles clear their whole row, black tiles included. Orange outline marks the tiles that would be removed. In Search mode, mark the starred tile (the reader does this, or tick "★ star" on the tile) and only words that pass through it are listed; tiles there do not disappear, so do not tap Play. An orange <strong>?</strong> is a tile the screenshot reader could not read; tap it to fix.</p>
+  <p class="status" id="offline"></p>
 </div>
 
 <script src="ocr/tesseract.min.js"></script>
@@ -648,8 +651,9 @@ async function fetchSenses(word) {
   let entries = defCache.get(word);
   if (!entries) {
     const res = await fetch("https://en.wiktionary.org/api/rest_v1/page/definition/" + encodeURIComponent(word.toLowerCase()));
-    const data = res.ok ? await res.json() : {};
-    entries = Array.isArray(data.en) ? data.en : [];
+    if (res.status === 404) entries = [];                       // no entry for this word: a real answer, worth remembering
+    else if (res.ok) { const data = await res.json(); entries = Array.isArray(data.en) ? data.en : []; }
+    else { const err = new Error("Lookup temporarily unavailable; try again."); err.temporary = true; throw err; } // a server hiccup is not an answer, so it is not cached
     defCache.set(word, entries);
   }
   const english = entries.filter(e => e.language === "English");
@@ -676,7 +680,7 @@ async function define(word) {
     if (!current()) return;
     body.textContent = "";
     if (!senses.length) { body.textContent = `${word} is in the game's word list but not in Wiktionary.` + (isMac ? " Try the Dictionary app." : ""); return; }
-    const list = (items) => { const ol = document.createElement("ol"); for (const s of items) { const li = document.createElement("li"); li.innerHTML = `<em>${s.pos}</em> `; li.appendChild(document.createTextNode(s.text)); ol.appendChild(li); } return ol; };
+    const list = (items) => { const ol = document.createElement("ol"); for (const s of items) { const li = document.createElement("li"); const em = document.createElement("em"); em.textContent = s.pos; li.appendChild(em); li.appendChild(document.createTextNode(" " + s.text)); ol.appendChild(li); } return ol; };
     body.appendChild(list(senses));
     // follow "plural of …" to the base word, at most twice (ZOEAE → zoea → zoëa)
     let base = baseOf(senses), shown = [word];
@@ -688,7 +692,7 @@ async function define(word) {
       shown.push(base); base = baseOf(baseSenses);
     }
   } catch (e) {
-    if ($("defWord").textContent === word) body.textContent = "The lookup needs an internet connection." + (isMac ? " The Dictionary app works offline." : "");
+    if ($("defWord").textContent === word) body.textContent = e && e.temporary ? e.message : "The lookup needs an internet connection." + (isMac ? " The Dictionary app works offline." : "");
   }
 }
 $("defineBtn").addEventListener("click", () => { if (shownPath) define(shownPath.word); });
@@ -1074,6 +1078,11 @@ async function readScreenshot(file) {
   } finally { ocrBusy = false; $("shotLabel").classList.remove("off"); }
 }
 $("shot").addEventListener("change", e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) readScreenshot(f); });
+// A screenshot can also be pasted or dropped anywhere on the page. Only an image payload is taken; text paste and drop are left alone.
+function imageIn(list) { for (const f of list || []) if (f && f.type && f.type.startsWith("image/")) return f; return null; }
+document.addEventListener("paste", e => { const f = imageIn(e.clipboardData && e.clipboardData.files); if (f) { e.preventDefault(); readScreenshot(f); } });
+document.addEventListener("dragover", e => { if (imageIn(e.dataTransfer && e.dataTransfer.files) || [...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files")) e.preventDefault(); });
+document.addEventListener("drop", e => { const f = imageIn(e.dataTransfer && e.dataTransfer.files); if (f) { e.preventDefault(); readScreenshot(f); } });
 
 // ---------- boot ----------
 load();
@@ -1082,7 +1091,26 @@ $("cols").value = cols; $("rows").value = rows;
 render();
 loadDict().then(() => { if (grid.some(row => row.some(c => c))) solve(); });
 window.__st = {readScreenshot, wordsFromLetters, getText: () => $("text").value, status: () => $("status").textContent};
-if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+// Offline readiness, shown under the legend. The worker downloads every file at install (all or nothing), so "activated" means the app works without a connection.
+function offlineStatus(msg, warn) { $("offline").textContent = msg; $("offline").classList.toggle("warn", !!warn); }
+const OFFLINE_FAIL = "Offline files did not download. Reload while online to try again.";
+function watchWorker(sw) {
+  if (!sw) return;
+  const update = () => {
+    if (sw.state === "installing" || sw.state === "installed") offlineStatus("Downloading offline files…");
+    else if (sw.state === "activating" || sw.state === "activated") offlineStatus("Ready for offline use.");
+    else if (sw.state === "redundant") offlineStatus(OFFLINE_FAIL, true);
+  };
+  update(); sw.addEventListener("statechange", update);
+}
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").then(reg => {
+      watchWorker(reg.installing || reg.waiting || reg.active);
+      reg.addEventListener("updatefound", () => watchWorker(reg.installing)); // a new version of the files is being fetched
+    }).catch(() => offlineStatus(OFFLINE_FAIL, true));
+  });
+} else offlineStatus("This browser cannot store the app for offline use.", true);
 })();
 </script>
 
