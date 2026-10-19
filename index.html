@@ -837,6 +837,39 @@ function decode(file) {
     img.src = url;
   });
 }
+// Dark theme. The game's dark look has charcoal tiles (about 35,35,35) with light letters (about 224), blocked tiles only a little darker
+// than the tiles (about 21), blue (about 76,127,162) and gold (about 195,163,74) tiles with the same light letters, on an olive backdrop.
+// The reader below is written for the light theme, so a dark screenshot is repainted in the light palette first and then read as usual:
+// tile surface and letter ink swap, blocked tiles stay black, blue and gold become the light theme's blue and yellow, and everything
+// else (the backdrop, the header, the toast) becomes a flat mid grey that no tile test matches.
+// A screenshot counts as dark when charcoal is a fifth or more of it and white is under a twelfth; a light board is mostly white tiles.
+function repaintDark(cv) {
+  const W = cv.width, H = cv.height;
+  const im = cv.getContext("2d", {willReadFrequently: true}).getImageData(0, 0, W, H), d = im.data;
+  let white = 0, charcoal = 0, n = 0;
+  for (let y = 0; y < H; y += 4) for (let x = 0; x < W; x += 4) {
+    const i = (y * W + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2], mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+    n++;
+    if (mn >= 200 && mx - mn < 45) white++;
+    else if (mx >= 16 && mx <= 56 && mx - mn < 12) charcoal++;
+  }
+  if (!(charcoal > n * 0.2 && white < n * 0.08)) return null;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2], mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+    let o;
+    if (b >= 120 && b > r + 40 && b > g + 10) o = [115, 180, 230];                                  // blue row-clear tile
+    else if (r >= 150 && r > b + 60 && g > b + 40) o = [248, 224, 112];                             // gold bonus tile
+    // blocked stays black; surface and ink swap, stretched so the surface (35) lands near the light theme's white (248) and not in the
+    // flat light grey band that marks a Search-mode star, and the letters (224) land at black
+    else if (mx - mn < 30) { const v = mx <= 28 ? 20 : Math.max(0, Math.min(255, 255 - Math.round(((0.3 * r + 0.59 * g + 0.11 * b) - 28) * 255 / 196))); o = [v, v, v]; }
+    else o = [128, 128, 128];                                                                        // backdrop and anything else
+    d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; d[i + 3] = 255;
+  }
+  const out = document.createElement("canvas");
+  out.width = W; out.height = H;
+  out.getContext("2d", {willReadFrequently: true}).putImageData(im, 0, 0);
+  return out;
+}
 // Pixel classes: 0 background/other, 1 white tile, 2 dark tile, 3 yellow tile, 4 blue tile, 5 grey (the finger-drag highlight over a tile)
 function classify(r, g, b, bg) {
   const mn = Math.min(r, g, b), mx = Math.max(r, g, b);
@@ -863,9 +896,11 @@ function classify(r, g, b, bg) {
 // count is the largest one whose grid lines stay clear of letter ink. Black tiles are solid, not ink.
 function colsByInk(cls, W, left, right, bottom) {
   const bw = right - left + 1;
-  // top of the board: walk up from the bottom until a tall band has no tile surface
+  // top of the board: walk up from the bottom until a band taller than most of a row has no tile surface. Rows touch, so the only
+  // such band inside the board would be a row of nothing but black tiles. A shorter band than the old fifth of the width keeps
+  // a toast or the header bar above the board (both white with black text once a dark screenshot is repainted) out of the ink count.
   let top = bottom, gap = 0;
-  for (let y = bottom; y >= 0 && gap < bw / 5; y--) {
+  for (let y = bottom; y >= 0 && gap < bw / 10; y--) {
     let run = 0, hit = false;
     for (let x = left; x <= right && !hit; x++) { const v = cls[y * W + x]; run = (v === 1 || v === 3 || v === 4) ? run + 1 : 0; if (run > bw * 0.04) hit = true; }
     if (hit) { top = y; gap = 0; } else gap++;
@@ -906,21 +941,20 @@ function analyse(cv) {
   const cls = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; cls[y * W + x] = classify(d[i], d[i + 1], d[i + 2], bg); }
   const tileish = v => v === 1 || v === 2 || v === 3 || v === 4;
-  // bottom of the board: lowest scanline with a wide run of white
-  let bottom = -1;
+  // bottom of the board: lowest scanline with a wide run of white that has a wide band of tile surface just above it.
+  // A light strip with nothing above it (a screen edge, a toast, a repainted dark-theme bar) is skipped, not taken for the board.
+  // left/right of the board come from that same band.
+  let bottom = -1, left = W, right = 0;
   for (let y = H - 1; y >= 0 && bottom < 0; y--) {
     let run = 0, best = 0;
     for (let x = 0; x < W; x++) { run = cls[y * W + x] === 1 ? run + 1 : 0; best = Math.max(best, run); }
-    if (best > W * 0.08) bottom = y;
+    if (best <= W * 0.08) continue;
+    let x0 = W, x1 = -1;
+    for (let yy = y - 3; yy > y - 40 && yy >= 0; yy--) for (let x = 0; x < W; x++) if (tileish(cls[yy * W + x])) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+    if (x1 - x0 + 1 < W * 0.3) continue;
+    bottom = y; left = x0; right = x1;
   }
-  if (bottom < 0) throw new Error("No board found in that image. Make sure the white tiles are visible.");
-  // left/right of the board from the band just above the bottom
-  let left = W, right = 0;
-  for (let y = bottom - 3; y > bottom - 40 && y >= 0; y--) {
-    let x0 = -1, x1 = -1;
-    for (let x = 0; x < W; x++) if (tileish(cls[y * W + x])) { if (x0 < 0) x0 = x; x1 = x; }
-    if (x0 >= 0) { left = Math.min(left, x0); right = Math.max(right, x1); }
-  }
+  if (bottom < 0) throw new Error("No board found in that image. Make sure the tiles are visible.");
   const bw = right - left + 1;
   // column count: count the letters in the bottom row (one dark cluster each) plus black tiles
   const bandTop = Math.round(bottom - bw * 0.09), bandBot = Math.round(bottom - bw * 0.01);
@@ -1068,7 +1102,9 @@ async function readScreenshot(file) {
   try {
     setStatus("Looking for the board…");
     const cv = await decode(file);
-    const a = analyse(cv);
+    const repainted = repaintDark(cv);
+    const src = repainted || cv; // the canvas the reader works from; the check panel still shows the screenshot itself
+    const a = analyse(src);
     if (!a.rows.length) throw new Error("Found the board edge but no tiles. Try a screenshot that shows the whole board.");
     const worker = await getOcr(msg => setStatus("Loading the text reader: " + msg));
     const total = a.rows.flat().filter(Boolean).length;
@@ -1088,8 +1124,8 @@ async function readScreenshot(file) {
         let n = 0;
         if (hasNum) {
           await worker.setParameters({tessedit_char_whitelist: "3456789"});
-          const dc = dg ? glyphCanvas(cv, dg.minX - 1, dg.minY - 1, dg.minX + dg.w + 1, dg.minY + dg.h + 1, false)
-                        : glyphCanvas(cv, t.x0 + a.cell * 0.64, t.y0 + a.cell * 0.02, t.x1, t.y0 + a.cell * 0.38, false);
+          const dc = dg ? glyphCanvas(src, dg.minX - 1, dg.minY - 1, dg.minX + dg.w + 1, dg.minY + dg.h + 1, false)
+                        : glyphCanvas(src, t.x0 + a.cell * 0.64, t.y0 + a.cell * 0.02, t.x1, t.y0 + a.cell * 0.38, false);
           const r = await worker.recognize(dc);
           n = +((r.data.text || "").replace(/[^3-9]/g, "")[0] || 0);
           if (n === 3 || n === 5) { // a 5 has a stem down its upper left; a 3 does not
@@ -1100,7 +1136,7 @@ async function readScreenshot(file) {
         }
         // Blank the corner only when a number was actually found there; a wide H or F reaches into the corner and would lose its right side.
         const mask = !!dg || n > 0;
-        const gc = glyphCanvas(cv, t.x0 + m, t.y0 + m, t.x1 - m, t.y1 - m, mask);
+        const gc = glyphCanvas(src, t.x0 + m, t.y0 + m, t.x1 - m, t.y1 - m, mask);
         let res = await worker.recognize(gc);
         let l = (res.data.text || "").toUpperCase().replace(/[^A-Z]/g, "")[0] || "";
         let conf = res.data.confidence || 0;
@@ -1132,7 +1168,7 @@ async function readScreenshot(file) {
     selected = null; $("editor").hidden = true; invalidate(); $("newRow").hidden = true; save(); render();
     showReaderCheck(cv, a);
     const stars = newGrid.flat().filter(c => c && c.s).length;
-    setStatus(`Board read: ${a.cols} columns, ${a.rows.length} rows.` + (stars ? ` ${stars === 1 ? "Star tile found; only words through it are listed." : `${stars} star tiles found; check them.`}` : "") + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} could not be read; tap the ? tiles to fix.` : " Check the letters, then find words."), !!unsure);
+    setStatus(`Board read: ${a.cols} columns, ${a.rows.length} rows${repainted ? ", dark theme" : ""}.` + (stars ? ` ${stars === 1 ? "Star tile found; only words through it are listed." : `${stars} star tiles found; check them.`}` : "") + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} could not be read; tap the ? tiles to fix.` : " Check the letters, then find words."), !!unsure);
     solve();
   } catch (e) {
     setStatus(e && e.message ? e.message : "Could not read that screenshot.", true);
