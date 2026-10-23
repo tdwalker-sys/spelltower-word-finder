@@ -204,8 +204,9 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
 
   <div class="panel" id="focus" hidden>
     <span>Only words through <strong id="focusTile"></strong></span>
+    <span id="focusRule" hidden><label><input type="radio" name="focusRule" value="all" checked> every one of them</label> <label><input type="radio" name="focusRule" value="any"> any of them</label></span>
     <button id="focusClear">Show all words</button>
-    <span class="grow">The list holds only words with a tracing through the ringed tile. It is cleared when the board changes.</span>
+    <span class="grow">The list holds only words with a tracing through the ringed tiles. Tap another tile and "Words through this tile" to add it. The filter is cleared when the board changes.</span>
   </div>
 
   <div class="opts">
@@ -225,7 +226,7 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
   </details>
 
   <div class="results" id="results"></div>
-  <p class="legend">Scores are estimates: letter values of every tile the word removes, times word length, times 2 with one yellow bonus tile in the word (<strong>★</strong>), 3 with two, and so on. Words of 5+ letters also remove the tiles directly above, below, left and right of each letter (not the diagonals). J, Q, X, Z and blue tiles clear their whole row, black tiles included. Orange outline marks the tiles that would be removed. In Search mode, mark the starred tile (the reader does this, or tick "★ star" on the tile) and only words that pass through it are listed; tiles there do not disappear, so do not tap Play. An orange <strong>?</strong> is a tile the screenshot reader could not read; tap it to fix. "Words through this tile" (in the tile editor) keeps only words with a tracing through that tile. With "Spare blue tiles" ticked, each word is shown with a tracing that removes no blue tile where one exists, and words that cannot avoid removing one (in the word, beside a 5+ letter word, or in a row another blue tile clears) are listed last under their own heading; <strong>−1 blue</strong> on a word is the number of blue tiles its tracing removes.</p>
+  <p class="legend">Scores are estimates: letter values of every tile the word removes, times word length, times 2 with one yellow bonus tile in the word (<strong>×2</strong> on the word), 3 with two (<strong>×3</strong>), and so on. Words of 5+ letters also remove the tiles directly above, below, left and right of each letter (not the diagonals). J, Q, X, Z and blue tiles clear their whole row, black tiles included. Orange outline marks the tiles that would be removed. In Search mode, mark the starred tile (the reader does this, or tick "★ star" on the tile) and only words that pass through it are listed; tiles there do not disappear, so do not tap Play. An orange <strong>?</strong> is a tile the screenshot reader could not read; tap it to fix. "Words through this tile" (in the tile editor) keeps only words with a tracing through that tile; tap more tiles and press it again to add them, and choose whether a word must pass through every selected tile or any one of them. In Tower, select the tiles you want gone. In Search, select the ★ tile and the yellow tiles you want to reach. With "Spare blue tiles" ticked, each word is shown with a tracing that removes no blue tile where one exists, and words that cannot avoid removing one (in the word, beside a 5+ letter word, or in a row another blue tile clears) are listed last under their own heading; <strong>−1 blue</strong> on a word is the number of blue tiles its tracing removes.</p>
   <p class="status" id="offline"></p>
 </div>
 
@@ -246,7 +247,8 @@ let shownPath = null;     // {word, cells:[[r,c]...], cleared:Set("r,c")}
 let undoStack = [];
 let lastList = null;      // the solver's last result, so a sort change re-renders without re-solving
 let typedPaths = [], typedIdx = 0, typedWord = "";   // tracings of a typed word on the current board
-let focusKey = null;      // "r,c" of the tile the list is filtered to, or null
+let focusKeys = new Set(); // "r,c" of the tiles the list is filtered to (empty = no filter)
+let focusAll = true;       // true: a word must pass through every selected tile; false: through at least one
 let trie = null;
 let dictStatus = "loading";
 let ocrWorker = null, ocrBusy = false;
@@ -329,7 +331,7 @@ function render() {
     if (cell && cell.n) { const n = document.createElement("span"); n.className = "n"; n.textContent = cell.n; b.appendChild(n); }
     if (selected && selected.r === r && selected.c === c) b.classList.add("sel");
     const k = r + "," + c;
-    if (k === focusKey) b.classList.add("focus");
+    if (focusKeys.has(k)) b.classList.add("focus");
     if (pathIdx.has(k)) { b.classList.add("path"); const o = document.createElement("span"); o.className = "o"; o.textContent = pathIdx.get(k); b.appendChild(o); }
     else if (shownPath && shownPath.cleared.has(k)) b.classList.add("clear");
     b.addEventListener("click", () => select(r, c));
@@ -346,8 +348,8 @@ function render() {
     $("playWarn").hidden = !total;
     if (total) $("playWarn").textContent = `This removes ${total} blue tile${total > 1 ? "s" : ""}` + (inWord && beside ? ` (${inWord} in the word, ${beside} beside it)` : beside ? " beside the word" : "") + (blueKeys().size === total ? ", the last on the board." : ".");
   }
-  $("focus").hidden = !focusKey;
-  if (focusKey) { const [r, c] = focusKey.split(",").map(Number); const cell = grid[r][c]; $("focusTile").textContent = `${cell ? cell.l : "?"} (row ${r + 1}, col ${c + 1})`; }
+  $("focus").hidden = !focusKeys.size;
+  if (focusKeys.size) { $("focusTile").textContent = focusText(); $("focusRule").hidden = focusKeys.size < 2; }
   $("undo").hidden = !undoStack.length;
 }
 function toText() {
@@ -360,7 +362,17 @@ function invalidate() {
   clearPath();
   lastList = null; $("results").textContent = "";
   typedPaths = []; typedIdx = 0; typedWord = ""; $("typedNext").hidden = true;
-  focusKey = null; $("focus").hidden = true;
+  focusKeys.clear(); $("focus").hidden = true;
+}
+// The tile filter, as text: "G (row 3, col 3) and T (row 4, col 5)" (or "… or …" when any one tile will do)
+function focusText() {
+  const parts = [...focusKeys].map(k => { const [r, c] = k.split(",").map(Number); const cell = grid[r][c]; return `${cell ? cell.l : "?"} (row ${r + 1}, col ${c + 1})`; });
+  return parts.length < 2 ? parts.join("") : parts.slice(0, -1).join(", ") + (focusAll ? " and " : " or ") + parts[parts.length - 1];
+}
+function passesFocus(p) {
+  if (!focusKeys.size) return true;
+  const hit = new Set(); for (const [r, c] of p) { const k = r + "," + c; if (focusKeys.has(k)) hit.add(k); }
+  return focusAll ? hit.size === focusKeys.size : hit.size > 0;
 }
 // Blue tiles clear their row: the ones drawn blue plus J, Q, X, Z. In Tower they are the way to clear the board, so the finder can be asked to spare them.
 function isBlue(cell) { return !!(cell && !cell.b && (cell.rc || ROWCLEAR_LETTERS.has(cell.l))); }
@@ -384,16 +396,20 @@ function select(r, c) {
   $("edB").checked = !!(cell && cell.b);
   $("edS").checked = !!(cell && cell.s);
   $("edFocus").hidden = !(cell && !cell.b && cell.l && cell.l !== "?");
+  $("edFocus").textContent = focusKeys.has(r + "," + c) ? "Drop this tile from the filter" : "Words through this tile";
   render();
   $("edLetter").focus();
 }
-// Filter the list to words that pass through the selected tile. Applied inside the solver, like the ★ tile, so a word reachable through the tile only by a lower-scoring path is still listed (with that path).
+// Filter the list to words that pass through the selected tiles (every one of them, or any one). Applied inside the solver, like the ★ tile,
+// so a word reachable through the tiles only by a lower-scoring path is still listed (with that path). The button toggles the tapped tile in and out.
 $("edFocus").addEventListener("click", () => {
   if (!selected) return;
-  focusKey = selected.r + "," + selected.c;
+  const k = selected.r + "," + selected.c;
+  if (focusKeys.has(k)) focusKeys.delete(k); else focusKeys.add(k);
   selected = null; $("editor").hidden = true; clearPath(); render(); solve();
 });
-$("focusClear").addEventListener("click", () => { focusKey = null; clearPath(); render(); solve(); });
+$("focusClear").addEventListener("click", () => { focusKeys.clear(); clearPath(); render(); solve(); });
+document.querySelectorAll("input[name=focusRule]").forEach(el => el.addEventListener("change", () => { focusAll = el.value === "all"; clearPath(); render(); solve(); }));
 function commitEditor() {
   if (!selected) return;
   const l = ($("edLetter").value || "").toUpperCase().replace(/[^A-Z]/g, "");
@@ -505,7 +521,7 @@ function solve() {
   // whatever the score; a word whose every tracing removes one keeps its best such tracing and is listed last (e.clean = false).
   function record(w, p) {
     if (!usesStar(p, stars)) return;
-    if (focusKey && !p.some(([r, c]) => r + "," + c === focusKey)) return;
+    if (!passesFocus(p)) return;
     const t = {path: p, ...scorePath(p)};
     t.blue = bluesRemoved(t.cleared, blues);
     const clean = !spare || t.blue === 0;
@@ -540,8 +556,8 @@ function showResults(entries) {
   const unsure = grid.flat().filter(c => c && c.l === "?").length;
   const starred = starKeys().size > 0;
   const blues = blueKeys().size;
-  const focusText = focusKey ? (() => { const [r, c] = focusKey.split(",").map(Number); const cell = grid[r][c]; return `${cell ? cell.l : "?"} (row ${r + 1}, col ${c + 1})`; })() : "";
-  if (!entries.length) { box.textContent = focusKey ? `No words pass through ${focusText}. Check the letters around it, or lower the minimum length.` : starred ? "No words pass through the ★ tile. Check the letters around it, or lower the minimum length." : "No words found. Check the letters, or lower the minimum length."; setStatus(focusKey ? `No words through ${focusText}.` : "No words found.", true); return; }
+  const focused = focusKeys.size > 0, ft = focused ? focusText() : "";
+  if (!entries.length) { box.textContent = focused ? `No words pass through ${ft}.${focusKeys.size > 1 && focusAll ? ' Try "any of them", drop a tile from the filter,' : " Check the letters around it,"} or lower the minimum length.` : starred ? "No words pass through the ★ tile. Check the letters around it, or lower the minimum length." : "No words found. Check the letters, or lower the minimum length."; setStatus(focused ? `No words through ${ft}.` : "No words found.", true); return; }
   const mode = $("sort").value; // "length" | "score" | "cleared"
   const spare = $("spare").checked;
   // pick the tracing that suits the sort, then order
@@ -563,7 +579,7 @@ function showResults(entries) {
     const wrap = document.createElement("div"); wrap.className = "words";
     for (const it of items) {
       const b = document.createElement("button"); b.className = "word";
-      b.innerHTML = `<span>${it.word}</span><span class="sc">${it.score}</span>` + (mode === "cleared" ? `<span class="sc">${it.cleared.size} tiles</span>` : "") + (it.path.some(([r, c]) => grid[r][c].rc || ROWCLEAR_LETTERS.has(grid[r][c].l)) ? `<span class="rc">row</span>` : "") + (it.path.some(([r, c]) => grid[r][c].y) ? `<span class="rc">★</span>` : "") + (it.blue ? `<span class="bl">−${it.blue} blue</span>` : "");
+      b.innerHTML = `<span>${it.word}</span><span class="sc">${it.score}</span>` + (mode === "cleared" ? `<span class="sc">${it.cleared.size} tiles</span>` : "") + (it.path.some(([r, c]) => grid[r][c].rc || ROWCLEAR_LETTERS.has(grid[r][c].l)) ? `<span class="rc">row</span>` : "") + ((n => n ? `<span class="rc">×${n + 1}</span>` : "")(it.path.filter(([r, c]) => grid[r][c].y).length)) + (it.blue ? `<span class="bl">−${it.blue} blue</span>` : "");
       b.addEventListener("click", () => {
         const on = shownPath && shownPath.word === it.word;
         clearPath();
@@ -576,7 +592,7 @@ function showResults(entries) {
     }
     box.appendChild(wrap);
   }
-  setStatus(`${list.length} words found${focusKey ? ` through ${focusText}` : ""}${starred ? ", all through the ★ tile" : ""}.`
+  setStatus(`${list.length} words found${focused ? ` through ${ft}` : ""}${starred ? ", all through the ★ tile" : ""}.`
     + (blues ? ` ${blues} blue tile${blues > 1 ? "s" : ""} on the board${spare ? `; ${spared.length ? `${spared.length} word${spared.length > 1 ? "s" : ""} would remove one (listed last)` : "every word listed spares them"}` : ""}.` : "")
     + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} marked ? were skipped; tap them to fix.` : ""), !!unsure);
 }
