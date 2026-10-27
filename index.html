@@ -932,6 +932,9 @@ function classify(r, g, b, bg) {
   // The dominant colour is the backdrop unless the board is so full that white tiles dominate; a backdrop pixel is never a tile.
   if (bg[0] < 200 || bg[1] < 200 || bg[2] < 200) { if (Math.abs(r - bg[0]) < 24 && Math.abs(g - bg[1]) < 24 && Math.abs(b - bg[2]) < 24) return 0; }
   if (mn >= 200 && mx - mn < 45) return 1;
+  // Dark olive (the frame around the board, about 59,49,17) is backdrop, not a black tile. A screenshot cropped close to the board
+  // has too little frame for it to be the dominant colour above, and taken for black tiles it widened the board to the image edges.
+  if (mx < 75 && r - b > 30 && g - b > 20) return 0;
   if (mx < 75) return 2;
   // A column close to the top is washed with red: white turns pink, black tiles and letter ink turn maroon, blue turns lavender.
   if (r >= 215 && g >= 160 && Math.abs(g - b) <= 14 && r - g >= 12) return 1;
@@ -999,15 +1002,21 @@ function analyse(cv) {
   const tileish = v => v === 1 || v === 2 || v === 3 || v === 4;
   // bottom of the board: lowest scanline with a wide run of white that has a wide band of tile surface just above it.
   // A light strip with nothing above it (a screen edge, a toast, a repainted dark-theme bar) is skipped, not taken for the board.
+  // Every scanline of the band must be tile across a good part of the width: a thin strip under a close crop of the board (the dark
+  // theme's charcoal bar, the same colour as the tiles) passes a test that only looks for tile pixels somewhere in the band.
   // left/right of the board come from that same band.
   let bottom = -1, left = W, right = 0;
   for (let y = H - 1; y >= 0 && bottom < 0; y--) {
     let run = 0, best = 0;
     for (let x = 0; x < W; x++) { run = cls[y * W + x] === 1 ? run + 1 : 0; best = Math.max(best, run); }
     if (best <= W * 0.08) continue;
-    let x0 = W, x1 = -1;
-    for (let yy = y - 3; yy > y - 40 && yy >= 0; yy--) for (let x = 0; x < W; x++) if (tileish(cls[yy * W + x])) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
-    if (x1 - x0 + 1 < W * 0.3) continue;
+    let x0 = W, x1 = -1, thin = false;
+    for (let yy = y - 3; yy > y - 40 && yy >= 0 && !thin; yy--) {
+      let n = 0;
+      for (let x = 0; x < W; x++) if (tileish(cls[yy * W + x])) { n++; if (x < x0) x0 = x; if (x > x1) x1 = x; }
+      if (n < W * 0.3) thin = true;
+    }
+    if (thin || x1 - x0 + 1 < W * 0.3) continue;
     bottom = y; left = x0; right = x1;
   }
   if (bottom < 0) throw new Error("No board found in that image. Make sure the tiles are visible.");
