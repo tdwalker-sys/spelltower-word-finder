@@ -75,6 +75,10 @@ label.btn input[type="file"] { position: absolute; width: 1px; height: 1px; opac
 /* Search mode's starred tile: a large faint star behind the letter, like the game draws it */
 .cell.star { isolation: isolate; }
 .cell.star::before { content: "★"; position: absolute; inset: 0; z-index: -1; display: flex; align-items: center; justify-content: center; font-size: 2em; color: rgba(0,0,0,0.16); pointer-events: none; }
+/* Bubble Puzzle's bubble: a pale blue disc with a blue ring round the letter; dashed while a shown word would pop it */
+.cell.bubble { isolation: isolate; }
+.cell.bubble::after { content: ""; position: absolute; inset: 9%; z-index: -1; border-radius: 50%; background: #c7ebfd; border: 2px solid #4fa9e6; pointer-events: none; }
+.cell.bubble.pop::after { border-style: dashed; border-color: var(--warn); }
 .cell .n { position: absolute; top: 1px; right: 3px; font-size: 0.55em; font-weight: 500; }
 .cell.sel { box-shadow: inset 0 0 0 3px var(--tile-hot); }
 .cell.path { background: var(--tile-hot); }
@@ -188,7 +192,7 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
     <label style="flex:1 1 100%">New bottom row <input type="text" id="newRowText" class="row" maxlength="30" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off" placeholder="e.g. TCCINUAE"></label>
     <button id="newRowBtn" class="primary">Add row and find words</button>
     <button id="newRowSkip">No new row</button>
-    <span class="grow">Type the letters left to right. <code>#</code> for a black tile, a digit after a letter for a minimum-length tile, <code>*</code> after a letter for a blue tile, <code>!</code> after a letter for a yellow bonus tile, <code>@</code> after a letter for Search mode's star tile.</span>
+    <span class="grow">Type the letters left to right. <code>#</code> for a black tile, a digit after a letter for a minimum-length tile, <code>*</code> after a letter for a blue tile, <code>!</code> after a letter for a yellow bonus tile, <code>@</code> after a letter for Search mode's star tile, <code>^</code> after a letter for a tile in a bubble.</span>
   </div>
 
   <div class="panel" id="editor" hidden>
@@ -199,6 +203,7 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
     <label><input type="checkbox" id="edY"> yellow bonus</label>
     <label><input type="checkbox" id="edB"> black tile</label>
     <label><input type="checkbox" id="edS"> ★ star (Search: every word must use it)</label>
+    <label><input type="checkbox" id="edU"> bubble (not usable until a word beside it pops it)</label>
     <button id="edEmpty">Empty</button>
     <button id="edDone">Done</button>
     <button id="edFocus" hidden>Words through this tile</button>
@@ -212,23 +217,24 @@ textarea { width: 100%; min-height: 9em; font-family: ui-monospace, Menlo, monos
   </div>
 
   <div class="opts">
-    <label><input type="checkbox" id="puzzle" checked> New row after each word (Puzzle, Ex Puzzle, Zen; untick for Tower and Search)</label>
+    <label><input type="checkbox" id="puzzle" checked> New row after each word (Puzzle, Ex Puzzle, Zen, Bubble; untick for Tower and Search)</label>
     <label>Columns <input type="number" id="cols" min="5" max="12" value="8"></label>
     <label>Rows <input type="number" id="rows" min="3" max="16" value="13"></label>
     <label>Min length <input type="number" id="minLen" min="3" max="8" value="3"></label>
-    <label>Sort <select id="sort"><option value="length">longest first</option><option value="score">highest score</option><option value="cleared">most tiles removed</option></select></label>
+    <label>Sort <select id="sort"><option value="length">longest first</option><option value="score">highest score</option><option value="cleared">most tiles removed</option><option value="popped">most bubbles popped</option></select></label>
     <label><input type="checkbox" id="spare"> Spare blue tiles (Tower: words that would remove a blue tile are listed last)</label>
+    <label><input type="checkbox" id="bubble"> Bubble rules (a blue tile pops the bubbles in its row instead of clearing the row)</label>
   </div>
 
   <details>
     <summary>Type the board instead</summary>
     <textarea id="text" spellcheck="false" autocorrect="off" autocapitalize="characters" autocomplete="off"></textarea>
-    <p class="hint">One row per line, top row first. <code>.</code> empty, <code>#</code> black tile, digit after a letter for a minimum-length tile (<code>E6</code>), <code>*</code> after a letter for a blue row-clear tile (<code>Z*</code>), <code>!</code> after a letter for a yellow bonus tile (<code>R!</code>), <code>@</code> after a letter for Search mode's star tile (<code>P@</code>).</p>
+    <p class="hint">One row per line, top row first. <code>.</code> empty, <code>#</code> black tile, digit after a letter for a minimum-length tile (<code>E6</code>), <code>*</code> after a letter for a blue row-clear tile (<code>Z*</code>), <code>!</code> after a letter for a yellow bonus tile (<code>R!</code>), <code>@</code> after a letter for Search mode's star tile (<code>P@</code>), <code>^</code> after a letter for a tile in a bubble (<code>T^</code>).</p>
     <button id="applyText">Apply</button>
   </details>
 
   <div class="results" id="results"></div>
-  <p class="legend">Scores are estimates: letter values of every tile the word removes, times word length, times 2 with one yellow bonus tile in the word (<strong>×2</strong> on the word), 3 with two (<strong>×3</strong>), and so on. Words of 5+ letters also remove the tiles directly above, below, left and right of each letter (not the diagonals). J, Q, X, Z and blue tiles clear their whole row, black tiles included. Orange outline marks the tiles that would be removed. In Search mode, mark the starred tile (the reader does this, or tick "★ star" on the tile). Words through it are the scoring words and come first; playing one ends the game, so it is the last move. Words that miss it are listed after them as setup words, with no score: they are played first, to open the board for a better ★ word. Tap a setup word to see the best ★ word the board would offer after that tracing, then Play it to follow along. A setup word that would remove the ★ tile without using it (as a 5+ letter word's neighbour, or in a row clear) is listed last and tagged "removes ★"; what the game does then has not been checked. The ★ stays on its letter as tiles drop. An orange <strong>?</strong> is a tile the screenshot reader could not read; tap it to fix. "Words through this tile" (in the tile editor) keeps only words with a tracing through that tile; tap more tiles and press it again to add them, and choose whether a word must pass through every selected tile or any one of them. In Tower, select the tiles you want gone. In Search, select the ★ tile and the yellow tiles you want to reach. With "Spare blue tiles" ticked, each word is shown with a tracing that removes no blue tile where one exists, and words that cannot avoid removing one (in the word, beside a 5+ letter word, or in a row another blue tile clears) are listed last under their own heading; <strong>−1 blue</strong> on a word is the number of blue tiles its tracing removes.</p>
+  <p class="legend">Scores are estimates: letter values of every tile the word removes, times word length, times 2 with one yellow bonus tile in the word (<strong>×2</strong> on the word), 3 with two (<strong>×3</strong>), and so on. Words of 5+ letters also remove the tiles directly above, below, left and right of each letter (not the diagonals). J, Q, X, Z and blue tiles clear their whole row, black tiles included. Orange outline marks the tiles that would be removed. In Search mode, mark the starred tile (the reader does this, or tick "★ star" on the tile). Words through it are the scoring words and come first; playing one ends the game, so it is the last move. Words that miss it are listed after them as setup words, with no score: they are played first, to open the board for a better ★ word. Tap a setup word to see the best ★ word the board would offer after that tracing, then Play it to follow along. A setup word that would remove the ★ tile without using it (as a 5+ letter word's neighbour, or in a row clear) is listed last and tagged "removes ★"; what the game does then has not been checked. The ★ stays on its letter as tiles drop. An orange <strong>?</strong> is a tile the screenshot reader could not read; tap it to fix. "Words through this tile" (in the tile editor) keeps only words with a tracing through that tile; tap more tiles and press it again to add them, and choose whether a word must pass through every selected tile or any one of them. In Tower, select the tiles you want gone. In Search, select the ★ tile and the yellow tiles you want to reach. With "Spare blue tiles" ticked, each word is shown with a tracing that removes no blue tile where one exists, and words that cannot avoid removing one (in the word, beside a 5+ letter word, or in a row another blue tile clears) are listed last under their own heading; <strong>−1 blue</strong> on a word is the number of blue tiles its tracing removes. Bubble Puzzle: a letter in a bubble cannot be used in a word. Any word pops a bubble that shares an edge with one of its letters (not a corner); the letter stays and can be used from then on. A word of 5+ letters pops a bubbled neighbour rather than removing it. With "Bubble rules" ticked (the reader ticks it when it finds a bubble), a blue tile in the word pops the bubbles in its row instead of clearing the row. <strong>pops 2</strong> on a word is the number of bubbles it pops; a dashed ring on the board marks them. Popping adds nothing to the score estimate.</p>
   <p class="status" id="offline"></p>
 </div>
 
@@ -259,7 +265,7 @@ function blank() { grid = Array.from({length: rows}, () => Array(cols).fill(null
 blank();
 
 // ---------- persistence (per-viewer convenience) ----------
-function save() { try { localStorage.setItem("st-board", JSON.stringify({cols, rows, grid, puzzle: $("puzzle").checked, sort: $("sort").value, spare: $("spare").checked})); } catch (e) {} }
+function save() { try { localStorage.setItem("st-board", JSON.stringify({cols, rows, grid, puzzle: $("puzzle").checked, sort: $("sort").value, spare: $("spare").checked, bubble: $("bubble").checked})); } catch (e) {} }
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem("st-board") || "null");
@@ -268,6 +274,7 @@ function load() {
       if (typeof s.puzzle === "boolean") $("puzzle").checked = s.puzzle;
       if (s.sort && [...$("sort").options].some(o => o.value === s.sort)) $("sort").value = s.sort;
       if (typeof s.spare === "boolean") $("spare").checked = s.spare;
+      if (typeof s.bubble === "boolean") $("bubble").checked = s.bubble;
     }
   } catch (e) {}
 }
@@ -283,10 +290,10 @@ function parseRow(line) {
     if (ch === ".") { row.push(null); continue; }
     if (ch === "#") { row.push({l: "", n: 0, rc: false, b: true}); continue; }
     if (/[A-Z?]/.test(ch)) {
-      const cell = {l: ch, n: 0, rc: false, b: false, y: false, s: false};
-      while (i + 1 < s.length && /[0-9*!@]/.test(s[i + 1])) {
+      const cell = {l: ch, n: 0, rc: false, b: false, y: false, s: false, u: false};
+      while (i + 1 < s.length && /[0-9*!@^]/.test(s[i + 1])) {
         i++;
-        if (s[i] === "*") cell.rc = true; else if (s[i] === "!") cell.y = true; else if (s[i] === "@") cell.s = true; else cell.n = +s[i];
+        if (s[i] === "*") cell.rc = true; else if (s[i] === "!") cell.y = true; else if (s[i] === "@") cell.s = true; else if (s[i] === "^") cell.u = true; else cell.n = +s[i];
       }
       row.push(cell);
     }
@@ -318,7 +325,7 @@ function render() {
     const cell = grid[r][c];
     const b = document.createElement("button");
     b.className = "cell";
-    b.setAttribute("aria-label", `row ${r + 1} column ${c + 1}` + (!cell ? ", empty" : cell.b ? ", black tile" : `, ${cell.l === "?" ? "unread" : cell.l}${cell.n ? `, needs ${cell.n} letters` : ""}${cell.rc || ROWCLEAR_LETTERS.has(cell.l) ? ", clears row" : ""}${cell.y ? ", bonus" : ""}${cell.s ? ", star tile, every word must use it" : ""}`));
+    b.setAttribute("aria-label", `row ${r + 1} column ${c + 1}` + (!cell ? ", empty" : cell.b ? ", black tile" : `, ${cell.l === "?" ? "unread" : cell.l}${cell.n ? `, needs ${cell.n} letters` : ""}${cell.rc || ROWCLEAR_LETTERS.has(cell.l) ? ", clears row" : ""}${cell.y ? ", bonus" : ""}${cell.s ? ", star tile, every word must use it" : ""}${cell.u ? ", in a bubble, not usable yet" : ""}`));
     if (!cell) b.classList.add("empty");
     else if (cell.b) b.classList.add("blocked");
     else {
@@ -326,6 +333,7 @@ function render() {
       if (cell.rc || ROWCLEAR_LETTERS.has(cell.l)) b.classList.add("rowclear");
       if (cell.y) b.classList.add("bonus");
       if (cell.s) b.classList.add("star");
+      if (cell.u) b.classList.add("bubble");
       if (cell.l === "?") b.classList.add("unsure");
       b.textContent = cell.l;
       if (cell.y) { const y = document.createElement("span"); y.className = "y"; y.textContent = "★"; b.appendChild(y); }
@@ -336,6 +344,7 @@ function render() {
     if (focusKeys.has(k)) b.classList.add("focus");
     if (pathIdx.has(k)) { b.classList.add("path"); const o = document.createElement("span"); o.className = "o"; o.textContent = pathIdx.get(k); b.appendChild(o); }
     else if (shownPath && shownPath.cleared.has(k)) b.classList.add("clear");
+    else if (shownPath && shownPath.popped && shownPath.popped.has(k)) b.classList.add("pop");
     b.addEventListener("click", () => select(r, c));
     g.appendChild(b);
   }
@@ -361,7 +370,7 @@ function render() {
   $("undo").hidden = !undoStack.length;
 }
 function toText() {
-  return grid.map(row => row.map(c => !c ? "." : c.b ? "#" : c.l + (c.n ? c.n : "") + (c.rc ? "*" : "") + (c.y ? "!" : "") + (c.s ? "@" : "")).join("")).join("\n");
+  return grid.map(row => row.map(c => !c ? "." : c.b ? "#" : c.l + (c.n ? c.n : "") + (c.rc ? "*" : "") + (c.y ? "!" : "") + (c.s ? "@" : "") + (c.u ? "^" : "")).join("")).join("\n");
 }
 function setStatus(msg, warn) { $("status").textContent = msg; $("status").classList.toggle("warn", !!warn); }
 function clearPath() { shownPath = null; document.querySelectorAll(".word.on").forEach(x => x.classList.remove("on")); }
@@ -403,7 +412,8 @@ function select(r, c) {
   $("edY").checked = !!(cell && cell.y);
   $("edB").checked = !!(cell && cell.b);
   $("edS").checked = !!(cell && cell.s);
-  $("edFocus").hidden = !(cell && !cell.b && cell.l && cell.l !== "?");
+  $("edU").checked = !!(cell && cell.u);
+  $("edFocus").hidden = !(cell && !cell.b && !cell.u && cell.l && cell.l !== "?");
   $("edFocus").textContent = focusKeys.has(r + "," + c) ? "Drop this tile from the filter" : "Words through this tile";
   render();
   $("edLetter").focus();
@@ -423,11 +433,11 @@ function commitEditor() {
   const l = ($("edLetter").value || "").toUpperCase().replace(/[^A-Z]/g, "");
   const b = $("edB").checked;
   if (!l && !b) grid[selected.r][selected.c] = null;
-  else grid[selected.r][selected.c] = {l: b ? "" : l, n: +$("edN").value || 0, rc: $("edRc").checked, b, y: !b && $("edY").checked, s: !b && $("edS").checked};
+  else grid[selected.r][selected.c] = {l: b ? "" : l, n: +$("edN").value || 0, rc: $("edRc").checked, b, y: !b && $("edY").checked, s: !b && $("edS").checked, u: !b && $("edU").checked};
   invalidate(); save(); render();
   setStatus("Board changed. Tap Done (or Find words) to refresh the list.");
 }
-["edN", "edRc", "edY", "edB", "edS"].forEach(id => $(id).addEventListener("change", commitEditor));
+["edN", "edRc", "edY", "edB", "edS", "edU"].forEach(id => $(id).addEventListener("change", commitEditor));
 $("edLetter").addEventListener("input", () => {
   commitEditor();
   if ($("edLetter").value && selected && selected.c + 1 < cols) select(selected.r, selected.c + 1);
@@ -441,6 +451,7 @@ $("applyText").addEventListener("click", () => { pushUndo(); applyParsed(parseTe
 $("puzzle").addEventListener("change", save);
 $("sort").addEventListener("change", () => { save(); if (lastList) { clearPath(); render(); showResults(lastList); } });
 $("spare").addEventListener("change", () => { save(); if (lastList) { clearPath(); render(); solve(); } }); // re-solve: the tracing kept per word depends on this
+$("bubble").addEventListener("change", () => { save(); if (lastList) { clearPath(); render(); solve(); } }); // re-solve: what a blue tile removes depends on this
 function resize() {
   const nc = Math.min(12, Math.max(5, +$("cols").value || cols));
   const nr = Math.min(16, Math.max(3, +$("rows").value || rows));
@@ -504,7 +515,7 @@ function enumerate(onWord) {
   const path = [];
   function dfs(r, c, node, word, need) {
     const cell = grid[r][c];
-    if (!cell || cell.b || !cell.l || cell.l === "?") return;
+    if (!cell || cell.b || cell.u || !cell.l || cell.l === "?") return; // a bubbled letter is out of play until it is popped
     const next = node[cell.l];
     if (!next) return;
     used[r][c] = true; path.push([r, c]);
@@ -522,11 +533,12 @@ function enumerate(onWord) {
 }
 function solve() {
   if (!trie) { setStatus(dictStatus === "failed" ? "No dictionary loaded." : "Dictionary still loading; try again in a moment.", true); return; }
+  if (!$("bubble").checked && grid.some(row => row.some(c => c && c.u))) { $("bubble").checked = true; save(); } // bubbles only occur in Bubble Puzzle
   const best = new Map();
   const stars = starKeys();
   const blues = blueKeys();
   const spare = $("spare").checked;
-  // For each word keep two tracings: the one that scores most and the one that removes most tiles (often the same one).
+  // For each word keep three tracings: the one that scores most, the one that removes most tiles and the one that pops most bubbles (often the same one).
   // Tracings are ranked before score: a tracing that removes a ★ tile without using it (a 5+ letter word's edge neighbour, or a row clear)
   // ranks below every tracing that leaves the ★ alone, and with "Spare blue tiles" on a tracing that removes a blue tile ranks below one that does not.
   // The best-ranked tracing wins outright; score and tiles removed only decide among tracings of the same rank. A word's rank is that of its best tracing:
@@ -540,19 +552,21 @@ function solve() {
     const setup = !usesStar(p, stars);
     t.killsStar = setup && [...t.cleared].some(k => stars.has(k));
     const rank = (t.killsStar ? 2 : 0) + (spare && t.blue > 0 ? 1 : 0);
-    const e = best.get(w) || (best.set(w, {word: w, setup, byScore: t, byCleared: t, rank}), best.get(w));
-    if (rank < e.rank) { e.byScore = t; e.byCleared = t; e.rank = rank; return; }
+    const e = best.get(w) || (best.set(w, {word: w, setup, byScore: t, byCleared: t, byPopped: t, rank}), best.get(w));
+    if (rank < e.rank) { e.byScore = t; e.byCleared = t; e.byPopped = t; e.rank = rank; return; }
     if (rank > e.rank) return;
     if (t.score > e.byScore.score) e.byScore = t;
     if (t.cleared.size > e.byCleared.cleared.size || (t.cleared.size === e.byCleared.cleared.size && t.score > e.byCleared.score)) e.byCleared = t;
+    if (t.popped.size > e.byPopped.popped.size || (t.popped.size === e.byPopped.popped.size && t.score > e.byPopped.score)) e.byPopped = t;
   }
   enumerate(record);
   lastList = [...best.values()].map(e => ({...e, clean: !(e.rank & 1), safe: !(e.rank & 2)}));
   showResults(lastList);
 }
-// The board after the tiles in `cleared` are removed and the columns drop: a copy, the live grid is untouched.
-function afterPlay(cleared) {
+// The board after the tiles in `cleared` are removed, the bubbles in `popped` burst and the columns drop: a copy, the live grid is untouched.
+function afterPlay(cleared, popped) {
   const g = grid.map(row => row.slice());
+  for (const k of popped || []) { const [r, c] = k.split(",").map(Number); if (g[r][c]) g[r][c] = {...g[r][c], u: false}; }
   for (const k of cleared) { const [r, c] = k.split(",").map(Number); g[r][c] = null; }
   for (let c = 0; c < cols; c++) {
     const stack = [];
@@ -563,8 +577,8 @@ function afterPlay(cleared) {
 }
 // One-step look-ahead for a Search setup word: the best-scoring word through a ★ tile on the board this tracing leaves behind.
 // Specific to the tracing, since another tracing of the same word can remove different tiles and leave a different board.
-function nextStarWord(cleared) {
-  const g = afterPlay(cleared), live = grid;
+function nextStarWord(cleared, popped) {
+  const g = afterPlay(cleared, popped), live = grid;
   grid = g;
   try {
     const stars = starKeys();
@@ -575,19 +589,24 @@ function nextStarWord(cleared) {
   } finally { grid = live; }
 }
 function scorePath(p) {
-  const cleared = new Set();
-  const len = p.length;
+  const cleared = new Set(), popped = new Set();
+  const len = p.length, bubbleRules = $("bubble").checked;
   const add = (r, c) => { if (r >= 0 && c >= 0 && r < rows && c < cols && grid[r][c]) cleared.add(r + "," + c); };
+  // An edge neighbour in a bubble is popped by a word of any length, and a 5+ letter word pops it rather than removing it;
+  // a corner neighbour is left alone (CARUNCLE and COE in the app, 2026-10-27). Other edge neighbours go only with a 5+ letter word.
+  const touch = (r, c) => { if (r >= 0 && c >= 0 && r < rows && c < cols && grid[r][c]) { if (grid[r][c].u) popped.add(r + "," + c); else if (len >= 5) cleared.add(r + "," + c); } };
   for (const [r, c] of p) {
     add(r, c);
-    if (len >= 5) for (const [dr, dc] of ORTHO) add(r + dr, c + dc);
+    for (const [dr, dc] of ORTHO) touch(r + dr, c + dc);
     const cell = grid[r][c];
-    if (cell.rc || ROWCLEAR_LETTERS.has(cell.l)) for (let cc = 0; cc < cols; cc++) add(r, cc);
+    // Under Bubble rules a blue tile pops the bubbles in its row and the row stays (her report; not yet seen in a screenshot)
+    if (cell.rc || ROWCLEAR_LETTERS.has(cell.l)) for (let cc = 0; cc < cols; cc++) { if (!bubbleRules) add(r, cc); else if (grid[r][cc] && grid[r][cc].u) popped.add(r + "," + cc); }
   }
+  for (const k of cleared) popped.delete(k);
   let sum = 0;
   for (const k of cleared) { const [r, c] = k.split(",").map(Number); const cell = grid[r][c]; sum += cell.b ? 0 : (VALUES[cell.l] || 0); }
   const bonus = p.filter(([r, c]) => grid[r][c].y).length; // yellow tiles in the word: ×2 for one, ×3 for two, ...
-  return {score: sum * len * (1 + bonus), cleared};
+  return {score: sum * len * (1 + bonus), cleared, popped};
 }
 function showResults(entries) {
   const box = $("results");
@@ -597,20 +616,22 @@ function showResults(entries) {
   const blues = blueKeys().size;
   const focused = focusKeys.size > 0, ft = focused ? focusText() : "";
   if (!entries.length) { box.textContent = focused ? `No words pass through ${ft}.${focusKeys.size > 1 && focusAll ? ' Try "any of them", drop a tile from the filter,' : " Check the letters around it,"} or lower the minimum length.` : starred ? "No words pass through the ★ tile. Check the letters around it, or lower the minimum length." : "No words found. Check the letters, or lower the minimum length."; setStatus(focused ? `No words through ${ft}.` : "No words found.", true); return; }
-  const mode = $("sort").value; // "length" | "score" | "cleared"
-  const spare = $("spare").checked;
+  const mode = $("sort").value; // "length" | "score" | "cleared" | "popped"
+  const spare = $("spare").checked, bubbleRules = $("bubble").checked;
+  const bubbles = grid.flat().filter(c => c && c.u).length;
   // pick the tracing that suits the sort, then order
-  const all = entries.map(e => { const t = mode === "cleared" ? e.byCleared : e.byScore; return {word: e.word, score: t.score, path: t.path, cleared: t.cleared, blue: t.blue, clean: e.clean, safe: e.safe, setup: e.setup}; });
+  const all = entries.map(e => { const t = mode === "cleared" ? e.byCleared : mode === "popped" ? e.byPopped : e.byScore; return {word: e.word, score: t.score, path: t.path, cleared: t.cleared, popped: t.popped, blue: t.blue, clean: e.clean, safe: e.safe, setup: e.setup}; });
   const alpha = (a, b) => a.word.localeCompare(b.word);
   if (mode === "score") all.sort((a, b) => b.score - a.score || b.word.length - a.word.length || alpha(a, b));
   else if (mode === "cleared") all.sort((a, b) => b.cleared.size - a.cleared.size || b.score - a.score || alpha(a, b));
+  else if (mode === "popped") all.sort((a, b) => b.popped.size - a.popped.size || b.score - a.score || alpha(a, b));
   else all.sort((a, b) => b.word.length - a.word.length || b.score - a.score || alpha(a, b));
   // In Search the scoring words (through the ★) come first; setup words (no ★ in the word) follow in their own groups, the ones that would remove the ★ last.
   const list = all.filter(it => !it.setup), setups = all.filter(it => it.setup);
   // longest-first is grouped by length; the other two are one ranked list. With "Spare blue tiles" on, words that cannot avoid removing a blue tile form a trailing group.
   const groups = new Map();
   const spared = spare ? list.filter(it => !it.clean) : [];
-  for (const it of list) { if (spare && !it.clean) continue; const k = mode === "length" ? `${it.word.length} letters` : (mode === "score" ? "By score" : "By tiles removed"); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
+  for (const it of list) { if (spare && !it.clean) continue; const k = mode === "length" ? `${it.word.length} letters` : (mode === "score" ? "By score" : mode === "popped" ? "By bubbles popped" : "By tiles removed"); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
   if (spared.length) groups.set("Would remove a blue tile", spared);
   const SETUP = "Setup words (no ★ in the word; no score shown)", UNSAFE = "Setup words that would remove the ★ tile";
   if (setups.some(it => it.safe)) groups.set(SETUP, setups.filter(it => it.safe));
@@ -624,11 +645,11 @@ function showResults(entries) {
     const wrap = document.createElement("div"); wrap.className = "words";
     for (const it of items) {
       const b = document.createElement("button"); b.className = "word";
-      b.innerHTML = `<span>${it.word}</span>` + (it.setup ? `<span class="su">setup</span>` : `<span class="sc">${it.score}</span>`) + (mode === "cleared" ? `<span class="sc">${it.cleared.size} tiles</span>` : "") + (it.path.some(([r, c]) => grid[r][c].rc || ROWCLEAR_LETTERS.has(grid[r][c].l)) ? `<span class="rc">row</span>` : "") + (!it.setup ? ((n => n ? `<span class="rc">×${n + 1}</span>` : "")(it.path.filter(([r, c]) => grid[r][c].y).length)) : "") + (it.blue ? `<span class="bl">−${it.blue} blue</span>` : "") + (!it.safe ? `<span class="bl">removes ★</span>` : "");
+      b.innerHTML = `<span>${it.word}</span>` + (it.setup ? `<span class="su">setup</span>` : `<span class="sc">${it.score}</span>`) + (mode === "cleared" ? `<span class="sc">${it.cleared.size} tiles</span>` : "") + (!bubbleRules && it.path.some(([r, c]) => grid[r][c].rc || ROWCLEAR_LETTERS.has(grid[r][c].l)) ? `<span class="rc">row</span>` : "") + (it.popped.size ? `<span class="rc">pops ${it.popped.size}</span>` : "") + (!it.setup ? ((n => n ? `<span class="rc">×${n + 1}</span>` : "")(it.path.filter(([r, c]) => grid[r][c].y).length)) : "") + (it.blue ? `<span class="bl">−${it.blue} blue</span>` : "") + (!it.safe ? `<span class="bl">removes ★</span>` : "");
       b.addEventListener("click", () => {
         const on = shownPath && shownPath.word === it.word;
         clearPath();
-        if (!on) { shownPath = {word: it.word, cells: it.path, cleared: it.cleared, next: it.setup ? nextStarWord(it.cleared) : null}; b.classList.add("on"); }
+        if (!on) { shownPath = {word: it.word, cells: it.path, cleared: it.cleared, popped: it.popped, next: it.setup ? nextStarWord(it.cleared, it.popped) : null}; b.classList.add("on"); }
         selected = null; $("editor").hidden = true;
         render();
         if (!on) $("grid").scrollIntoView({behavior: "smooth", block: "nearest"});
@@ -639,6 +660,7 @@ function showResults(entries) {
   }
   setStatus((starred ? `${list.length} words through the ★ tile${focused ? ` and ${ft}` : ""}${setups.length ? `, ${setups.length} setup word${setups.length > 1 ? "s" : ""} without it` : ""}.` : `${list.length} words found${focused ? ` through ${ft}` : ""}.`)
     + (blues ? ` ${blues} blue tile${blues > 1 ? "s" : ""} on the board${spare ? `; ${spared.length ? `${spared.length} word${spared.length > 1 ? "s" : ""} would remove one (listed last)` : "every word listed spares them"}` : ""}.` : "")
+    + (bubbles ? ` ${bubbles} bubble${bubbles > 1 ? "s" : ""} on the board; ${(n => n ? `${n} word${n > 1 ? "s" : ""} pop${n > 1 ? "" : "s"} at least one` : "no word pops one yet")(list.filter(it => it.popped.size).length)}.` : "")
     + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} marked ? were skipped; tap them to fix.` : ""), !!unsure);
 }
 $("solve").addEventListener("click", () => { clearPath(); selected = null; $("editor").hidden = true; render(); solve(); });
@@ -652,7 +674,7 @@ function tracePaths(word) {
   const path = [];
   function dfs(r, c, i) {
     const cell = grid[r][c];
-    if (!cell || cell.b || cell.l !== word[i] || (cell.n || 0) > word.length) return;
+    if (!cell || cell.b || cell.u || cell.l !== word[i] || (cell.n || 0) > word.length) return;
     used[r][c] = true; path.push([r, c]);
     if (i === word.length - 1) paths.push(path.slice());
     else for (const [dr, dc] of DIRS) { const nr = r + dr, nc = c + dc; if (nr < 0 || nc < 0 || nr >= rows || nc >= cols || used[nr][nc]) continue; dfs(nr, nc, i + 1); }
@@ -671,7 +693,7 @@ function tracePaths(word) {
 function showTypedPath(prefix) {
   const p = typedPaths[typedIdx];
   clearPath(); selected = null; $("editor").hidden = true;
-  shownPath = {word: typedWord, cells: p.path, cleared: p.cleared};
+  shownPath = {word: typedWord, cells: p.path, cleared: p.cleared, popped: p.popped};
   render();
   $("typedNext").hidden = typedPaths.length < 2;
   setStatus((prefix || "") + `${typedWord} traced${typedPaths.length > 1 ? ` (${typedIdx + 1} of ${typedPaths.length} ways that remove different tiles)` : ""}. Check the outline, then tap "Play this word".`);
@@ -826,13 +848,15 @@ $("playBtn").addEventListener("click", () => {
   pushUndo();
   const word = shownPath.word, stars = starKeys();
   const wasFinal = stars.size > 0 && shownPath.cells.some(([r, c]) => stars.has(r + "," + c));
-  grid = afterPlay(shownPath.cleared); // the outlined tiles go and the columns drop
+  const pops = shownPath.popped ? shownPath.popped.size : 0;
+  const played = `Played ${word}` + (pops ? ` and popped ${pops} bubble${pops > 1 ? "s" : ""}.` : ".");
+  grid = afterPlay(shownPath.cleared, shownPath.popped); // the outlined tiles go, the dashed bubbles burst and the columns drop
   invalidate(); selected = null; $("editor").hidden = true;
   save(); render();
   if ($("puzzle").checked) {
     openNewRow("No new row");
-    setStatus(`Played ${word}. Now type the new bottom row from the game.`);
-  } else { solve(); setStatus(`Played ${word}.` + (wasFinal ? " In Search that was the ★ word, so the game is over." : "") + " " + $("status").textContent, $("status").classList.contains("warn")); } // solve() sets its own status; keep the play in front of it
+    setStatus(`${played} Now type the new bottom row from the game.`);
+  } else { solve(); setStatus(played + (wasFinal ? " In Search that was the ★ word, so the game is over." : "") + " " + $("status").textContent, $("status").classList.contains("warn")); } // solve() sets its own status; keep the play in front of it
 });
 function openNewRow(skipLabel) {
   $("newRow").hidden = false; $("newRowText").value = ""; $("newRowSkip").textContent = skipLabel; $("newRowText").focus();
@@ -936,6 +960,8 @@ function classify(r, g, b, bg) {
   // has too little frame for it to be the dominant colour above, and taken for black tiles it widened the board to the image edges.
   if (mx < 75 && r - b > 30 && g - b > 20) return 0;
   if (mx < 75) return 2;
+  // Bubble Puzzle draws the letter inside a bubble in dark slate blue (about 39,71,88), not black. Narrow on hue, so a dark teal backdrop stays out.
+  if (mx < 115 && g - r >= 18 && g - r <= 45 && b - g >= 8 && b - g <= 30) return 2;
   // A column close to the top is washed with red: white turns pink, black tiles and letter ink turn maroon, blue turns lavender.
   if (r >= 215 && g >= 160 && Math.abs(g - b) <= 14 && r - g >= 12) return 1;
   if (r < 175 && g < 100 && b < 110 && r - g > 20) return 2;
@@ -1004,19 +1030,37 @@ function analyse(cv) {
   // A light strip with nothing above it (a screen edge, a toast, a repainted dark-theme bar) is skipped, not taken for the board.
   // Every scanline of the band must be tile across a good part of the width: a thin strip under a close crop of the board (the dark
   // theme's charcoal bar, the same colour as the tiles) passes a test that only looks for tile pixels somewhere in the band.
-  // left/right of the board come from that same band.
+  // left/right of the board come from that same band, measured out from the white run: the band is followed across a gap narrower than
+  // 60% of the width found so far (an empty column inside the board) but not across a wider one. On an iPad with the game in a floating
+  // window, the wallpaper on either side is dark enough to pass for black tiles, and counting it widened the board to the whole screen.
+  const tileSpan = (y, from, to) => {
+    const at = i => { const v = cls[y * W + i]; return tileish(v) || v === 5; };
+    let x = from; while (x <= to && !at(x)) x++; // start from any tile pixel above the white run
+    if (x > to) return null;
+    let a = x, b = x;
+    for (let grew = true; grew; ) {
+      grew = false;
+      while (a > 0 && at(a - 1)) a--;
+      while (b < W - 1 && at(b + 1)) b++;
+      const reach = (b - a + 1) * 0.6;
+      let i = a - 1; while (i >= 0 && !at(i) && a - i <= reach) i--;
+      if (i >= 0 && at(i)) { a = i; grew = true; }
+      let j = b + 1; while (j < W && !at(j) && j - b <= reach) j++;
+      if (j < W && at(j)) { b = j; grew = true; }
+    }
+    return [a, b];
+  };
   let bottom = -1, left = W, right = 0;
   for (let y = H - 1; y >= 0 && bottom < 0; y--) {
-    let run = 0, best = 0;
-    for (let x = 0; x < W; x++) { run = cls[y * W + x] === 1 ? run + 1 : 0; best = Math.max(best, run); }
+    let run = 0, best = 0, bestEnd = 0;
+    for (let x = 0; x < W; x++) { run = cls[y * W + x] === 1 ? run + 1 : 0; if (run > best) { best = run; bestEnd = x; } }
     if (best <= W * 0.08) continue;
     let x0 = W, x1 = -1, thin = false;
     for (let yy = y - 3; yy > y - 40 && yy >= 0 && !thin; yy--) {
-      let n = 0;
-      for (let x = 0; x < W; x++) if (tileish(cls[yy * W + x])) { n++; if (x < x0) x0 = x; if (x > x1) x1 = x; }
-      if (n < W * 0.3) thin = true;
+      const s = tileSpan(yy, bestEnd - best + 1, bestEnd);
+      if (!s || s[1] - s[0] + 1 < W * 0.15) thin = true; else { x0 = Math.min(x0, s[0]); x1 = Math.max(x1, s[1]); }
     }
-    if (thin || x1 - x0 + 1 < W * 0.3) continue;
+    if (thin || x1 < x0) continue; // x1 < x0: no band was checked at all (a white run at the very top of the image)
     bottom = y; left = x0; right = x1;
   }
   if (bottom < 0) throw new Error("No board found in that image. Make sure the tiles are visible.");
@@ -1052,18 +1096,21 @@ function analyse(cv) {
     for (let i = 0; i < nc; i++) {
       const x0 = left + i * cell, x1 = x0 + cell;
       const counts = [0, 0, 0, 0, 0, 0];
-      let tot = 0, grey = 0;
+      let tot = 0, grey = 0, pale = 0;
       for (let y = Math.round(y0 + cell * 0.08); y < y1 - cell * 0.08; y += 2) for (let x = Math.round(x0 + cell * 0.08); x < x1 - cell * 0.08; x += 2) {
         counts[cls[y * W + x]]++; tot++;
         // Search mode's star is flat light grey (about 216) on the white tile (about 248); nothing else on a tile is that colour
         const i = (y * W + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
         if (r >= 195 && r <= 235 && Math.abs(r - g) < 8 && Math.abs(r - b) < 8) grey++;
+        // Bubble Puzzle's bubble fills most of the tile with a pale sky blue (about 199,235,253) inside a blue ring. The blue row-clear
+        // tile (about 138,215,251) has much less red, so red tells them apart; the class test above counts both as blue.
+        if (r >= 160 && r <= 232 && g >= 205 && b >= 235 && g > r && b - r >= 20 && b - r <= 95) pale++;
       }
-      const white = (counts[1] + counts[5]) / tot, dark = counts[2] / tot, yellow = counts[3] / tot, blue = counts[4] / tot;
+      const white = (counts[1] + counts[5]) / tot, dark = counts[2] / tot, yellow = counts[3] / tot, blue = counts[4] / tot, bubble = pale / tot > 0.3;
       let kind = 0;
-      if (dark > 0.6) kind = 2; else if (yellow > 0.35) kind = 3; else if (blue > 0.35) kind = 4; else if (white > 0.45) kind = 1;
+      if (dark > 0.6) kind = 2; else if (yellow > 0.35) kind = 3; else if (bubble) kind = 1; else if (blue > 0.35) kind = 4; else if (white > 0.45) kind = 1;
       if (kind) any = true;
-      row.push(kind ? {kind, x0, y0, x1, y1, star: kind === 1 && grey / tot > 0.12} : null);
+      row.push(kind ? {kind, x0, y0, x1, y1, star: kind === 1 && !bubble && grey / tot > 0.12, bubble} : null);
     }
     if (!any) break;
     out.unshift(row);
@@ -1086,9 +1133,9 @@ function showReaderCheck(cv, a) {
   $("readerHint").textContent = `Orange grid: ${a.cols} columns by ${a.rows.length} rows, as read. Every tile should sit inside an orange cell. A row left outside the grid was missed: add it with "Add row", or fix the whole board under "Type the board instead".`;
   $("readerCheck").hidden = false; $("readerCheck").open = true;
 }
-function glyphCanvas(src, x0, y0, x1, y1, maskCorner) {
+function glyphCanvas(src, x0, y0, x1, y1, maskCorner, target = 96) {
   const w = x1 - x0, h = y1 - y0;
-  const scale = Math.max(1, 96 / h);
+  const scale = Math.max(1, target / h);
   const cv = document.createElement("canvas");
   cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
   const c = cv.getContext("2d", {willReadFrequently: true});
@@ -1192,7 +1239,10 @@ async function readScreenshot(file) {
           const dc = dg ? glyphCanvas(src, dg.minX - 1, dg.minY - 1, dg.minX + dg.w + 1, dg.minY + dg.h + 1, false)
                         : glyphCanvas(src, t.x0 + a.cell * 0.64, t.y0 + a.cell * 0.02, t.x1, t.y0 + a.cell * 0.38, false);
           const r = await worker.recognize(dc);
-          n = +((r.data.text || "").replace(/[^3-9]/g, "")[0] || 0);
+          let digits = (r.data.text || "").replace(/[^3-9]/g, "");
+          // Bubble Puzzle's bold corner digit (on a grey page curl) reads as nothing when blown up, but reliably near its own size
+          if (!digits && dg) digits = ((await worker.recognize(glyphCanvas(src, dg.minX - 1, dg.minY - 1, dg.minX + dg.w + 1, dg.minY + dg.h + 1, false, 24))).data.text || "").replace(/[^3-9]/g, "");
+          n = +(digits[0] || 0);
           if (n === 3 || n === 5) { // a 5 has a stem down its upper left; a 3 does not
             const ds = dg || glyphShape(a.cls, a.W, t.x0 + a.cell * 0.66, t.y0 + a.cell * 0.04, t.x1 - a.cell * 0.02, t.y0 + a.cell * 0.36);
             if (ds) { const stem = darkFraction(a.cls, a.W, ds.minX, ds.minY, ds.minX + ds.w * 0.35, ds.minY + ds.h * 0.45); n = stem > 0.3 ? 5 : 3; }
@@ -1222,7 +1272,7 @@ async function readScreenshot(file) {
           else if (l === "" && shape.aspect > 0.85 && shape.midSpan > 0.9) l = "O";
         }
         if (!l || (conf < 40 && centreDark < 0.01)) { l = "?"; unsure++; }
-        gr.push({l, n, rc: t.kind === 4, b: false, y: t.kind === 3, s: !!t.star});
+        gr.push({l, n, rc: t.kind === 4, b: false, y: t.kind === 3, s: !!t.star, u: !!t.bubble});
         done++;
         setStatus(`Reading tiles… ${done} of ${total}`);
       }
@@ -1232,8 +1282,9 @@ async function readScreenshot(file) {
     applyParsed({rows: newGrid, width: a.cols}, a.cols);
     selected = null; $("editor").hidden = true; invalidate(); $("newRow").hidden = true; save(); render();
     showReaderCheck(cv, a);
-    const stars = newGrid.flat().filter(c => c && c.s).length;
-    setStatus(`Board read: ${a.cols} columns, ${a.rows.length} rows${repainted ? ", dark theme" : ""}.` + (stars ? ` ${stars === 1 ? "Star tile found; only words through it are listed." : `${stars} star tiles found; check them.`}` : "") + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} could not be read; tap the ? tiles to fix.` : " Check the letters, then find words."), !!unsure);
+    const stars = newGrid.flat().filter(c => c && c.s).length, bubbles = newGrid.flat().filter(c => c && c.u).length;
+    if (bubbles) $("bubble").checked = true;
+    setStatus(`Board read: ${a.cols} columns, ${a.rows.length} rows${repainted ? ", dark theme" : ""}.` + (stars ? ` ${stars === 1 ? "Star tile found; only words through it are listed." : `${stars} star tiles found; check them.`}` : "") + (bubbles ? ` ${bubbles} bubble${bubbles > 1 ? "s" : ""} found; Bubble rules ticked.` : "") + (unsure ? ` ${unsure} tile${unsure > 1 ? "s" : ""} could not be read; tap the ? tiles to fix.` : " Check the letters, then find words."), !!unsure);
     solve();
   } catch (e) {
     setStatus(e && e.message ? e.message : "Could not read that screenshot.", true);
